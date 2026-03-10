@@ -192,8 +192,11 @@ static ason_err_t load_i64_raw(const char** pos, const char* end, int64_t* out) 
     if (*pos < end && **pos == '-') { neg = true; (*pos)++; }
     uint64_t val = 0;
     int digits = 0;
+    uint64_t limit = neg ? (uint64_t)INT64_MAX + 1 : (uint64_t)INT64_MAX;
     while (*pos < end && **pos >= '0' && **pos <= '9') {
-        val = val * 10 + (**pos - '0');
+        int d = **pos - '0';
+        if (val > (limit - d) / 10) return ASON_ERR_INVALID_NUMBER;
+        val = val * 10 + d;
         (*pos)++; digits++;
     }
     if (digits == 0) return ASON_ERR_INVALID_NUMBER;
@@ -206,7 +209,9 @@ static ason_err_t load_u64_raw(const char** pos, const char* end, uint64_t* out)
     uint64_t val = 0;
     int digits = 0;
     while (*pos < end && **pos >= '0' && **pos <= '9') {
-        val = val * 10 + (**pos - '0');
+        int d = **pos - '0';
+        if (val > (UINT64_MAX - d) / 10) return ASON_ERR_INVALID_NUMBER;
+        val = val * 10 + d;
         (*pos)++; digits++;
     }
     if (digits == 0) return ASON_ERR_INVALID_NUMBER;
