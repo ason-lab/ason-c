@@ -239,6 +239,39 @@ ASON_FIELDS(DstFewerOpt, 2,
 static void free_srcopt(SrcOpt* s) { if (s->label.has_value) ason_string_free(&s->label.value); }
 static void free_dstfeweropt(DstFewerOpt* d) { if (d->label.has_value) ason_string_free(&d->label.value); }
 
+/* Matrix P1/P2/N4 */
+typedef struct { int64_t id; double score; } MatrixPart;
+ASON_FIELDS(MatrixPart, 2,
+    ASON_FIELD(MatrixPart, id, "id", i64),
+    ASON_FIELD(MatrixPart, score, "score", f64))
+
+typedef struct { int64_t foo; ason_string_t bar; } MatrixNoOverlap;
+ASON_FIELDS(MatrixNoOverlap, 2,
+    ASON_FIELD(MatrixNoOverlap, foo, "foo", i64),
+    ASON_FIELD(MatrixNoOverlap, bar, "bar", str))
+
+typedef struct { ason_string_t name; ason_opt_str nick; } MatrixNestedOpt;
+ASON_FIELDS(MatrixNestedOpt, 2,
+    ASON_FIELD(MatrixNestedOpt, name, "name", str),
+    ASON_FIELD(MatrixNestedOpt, nick, "nick", opt_str))
+
+typedef struct { int64_t id; MatrixNestedOpt profile; } MatrixUserNestedOpt;
+ASON_FIELDS(MatrixUserNestedOpt, 2,
+    ASON_FIELD(MatrixUserNestedOpt, id, "id", i64),
+    ASON_FIELD_STRUCT(MatrixUserNestedOpt, profile, "profile", &MatrixNestedOpt_ason_desc))
+ASON_VEC_STRUCT_DEFINE(MatrixUserNestedOpt)
+
+static void free_matrix_no_overlap(MatrixNoOverlap* d) {
+    if (d->bar.data) ason_string_free(&d->bar);
+}
+static void free_matrix_nested_opt(MatrixNestedOpt* p) {
+    if (p->name.data) ason_string_free(&p->name);
+    if (p->nick.has_value) ason_string_free(&p->nick.value);
+}
+static void free_matrix_user_nested_opt(MatrixUserNestedOpt* u) {
+    free_matrix_nested_opt(&u->profile);
+}
+
 /* Dim 11: special strings */
 typedef struct { int64_t id; ason_string_t name; ason_string_t bio; } SrcStr;
 ASON_FIELDS(SrcStr, 3,
@@ -1069,6 +1102,80 @@ void test_cross_zero_value(void) {
     PASS();
 }
 
+void test_matrix_partial_overlap_typed(void) {
+    TEST(matrix_partial_overlap_typed);
+    const char* input = "{id:int,name:str,score:float,active:bool}:(42,Alice,9.5,true)";
+    MatrixPart dst = {0};
+    ASSERT_OK(ason_decode_MatrixPart(input, strlen(input), &dst));
+    ASSERT_EQ_I(dst.id, 42);
+    ASSERT_NEAR(dst.score, 9.5, 1e-10);
+    PASS();
+}
+
+void test_matrix_partial_overlap_untyped(void) {
+    TEST(matrix_partial_overlap_untyped);
+    const char* input = "{id,name,score,active}:(42,Alice,9.5,true)";
+    MatrixPart dst = {0};
+    ASSERT_OK(ason_decode_MatrixPart(input, strlen(input), &dst));
+    ASSERT_EQ_I(dst.id, 42);
+    ASSERT_NEAR(dst.score, 9.5, 1e-10);
+    PASS();
+}
+
+void test_matrix_no_overlap_typed(void) {
+    TEST(matrix_no_overlap_typed);
+    const char* input = "{id:int,name:str}:(42,Alice)";
+    MatrixNoOverlap dst = {0};
+    ASSERT_OK(ason_decode_MatrixNoOverlap(input, strlen(input), &dst));
+    ASSERT_EQ_I(dst.foo, 0);
+    ASSERT_TRUE(dst.bar.data == NULL || strcmp(dst.bar.data, "") == 0);
+    free_matrix_no_overlap(&dst);
+    PASS();
+}
+
+void test_matrix_no_overlap_untyped(void) {
+    TEST(matrix_no_overlap_untyped);
+    const char* input = "{id,name}:(42,Alice)";
+    MatrixNoOverlap dst = {0};
+    ASSERT_OK(ason_decode_MatrixNoOverlap(input, strlen(input), &dst));
+    ASSERT_EQ_I(dst.foo, 0);
+    ASSERT_TRUE(dst.bar.data == NULL || strcmp(dst.bar.data, "") == 0);
+    free_matrix_no_overlap(&dst);
+    PASS();
+}
+
+void test_matrix_nested_optional_typed(void) {
+    TEST(matrix_nested_optional_typed);
+    const char* input = "[{id:int,profile:{name:str,nick:str?,score:float?},active:bool}]:(1,(Alice,ally,9.5),true),(2,(Bob,,),false)";
+    MatrixUserNestedOpt* dst = NULL; size_t n = 0;
+    ASSERT_OK(ason_decode_vec_MatrixUserNestedOpt(input, strlen(input), &dst, &n));
+    ASSERT_EQ_U(n, 2u);
+    ASSERT_EQ_I(dst[0].id, 1);
+    ASSERT_EQ_S(dst[0].profile.name.data, "Alice");
+    ASSERT_TRUE(dst[0].profile.nick.has_value);
+    ASSERT_EQ_S(dst[0].profile.nick.value.data, "ally");
+    ASSERT_EQ_I(dst[1].id, 2);
+    ASSERT_EQ_S(dst[1].profile.name.data, "Bob");
+    ASSERT_FALSE(dst[1].profile.nick.has_value);
+    for (size_t i = 0; i < n; i++) free_matrix_user_nested_opt(&dst[i]);
+    free(dst);
+    PASS();
+}
+
+void test_matrix_nested_optional_untyped(void) {
+    TEST(matrix_nested_optional_untyped);
+    const char* input = "[{id,profile:{name,nick,score},active}]:(1,(Alice,ally,9.5),true),(2,(Bob,,),false)";
+    MatrixUserNestedOpt* dst = NULL; size_t n = 0;
+    ASSERT_OK(ason_decode_vec_MatrixUserNestedOpt(input, strlen(input), &dst, &n));
+    ASSERT_EQ_U(n, 2u);
+    ASSERT_TRUE(dst[0].profile.nick.has_value);
+    ASSERT_EQ_S(dst[0].profile.nick.value.data, "ally");
+    ASSERT_FALSE(dst[1].profile.nick.has_value);
+    for (size_t i = 0; i < n; i++) free_matrix_user_nested_opt(&dst[i]);
+    free(dst);
+    PASS();
+}
+
 int main(void) {
     printf("=== ASON C Cross-Compat Test Suite ===\n\n");
 
@@ -1108,6 +1215,12 @@ int main(void) {
     test_cross_many_rows();
     test_cross_typed_subset_reorder();
     test_cross_zero_value();
+    test_matrix_partial_overlap_typed();
+    test_matrix_partial_overlap_untyped();
+    test_matrix_no_overlap_typed();
+    test_matrix_no_overlap_untyped();
+    test_matrix_nested_optional_typed();
+    test_matrix_nested_optional_untyped();
 
     printf("\n=== Results: %d passed, %d failed ===\n", tests_passed, tests_failed);
     return tests_failed > 0 ? 1 : 0;
