@@ -59,15 +59,21 @@ ASON_FIELDS(TOuter, 2,
 
 static void free_touter(TOuter* o) { ason_string_free(&o->label); ason_string_free(&o->inner.val); }
 
-typedef struct { ason_string_t name; ason_map_si attrs; } TWithMap;
-ASON_FIELDS(TWithMap, 2,
-    ASON_FIELD(TWithMap, name,  "name",  str),
-    ASON_FIELD(TWithMap, attrs, "attrs", map_si))
+typedef struct { ason_string_t key; int64_t value; } TAttr;
+ASON_FIELDS(TAttr, 2,
+    ASON_FIELD(TAttr, key,   "key",   str),
+    ASON_FIELD(TAttr, value, "value", i64))
+ASON_VEC_STRUCT_DEFINE(TAttr)
 
-static void free_twithmap(TWithMap* m) {
+typedef struct { ason_string_t name; ason_vec_TAttr attrs; } TWithEntries;
+ASON_FIELDS(TWithEntries, 2,
+    ASON_FIELD(TWithEntries, name, "name", str),
+    ASON_FIELD_VEC_STRUCT(TWithEntries, attrs, "attrs", TAttr))
+
+static void free_twithentries(TWithEntries* m) {
     ason_string_free(&m->name);
     for (size_t i = 0; i < m->attrs.len; i++) ason_string_free(&m->attrs.data[i].key);
-    ason_map_si_free(&m->attrs);
+    ason_vec_TAttr_free(&m->attrs);
 }
 
 typedef struct { double a; double b; float c; } TFloats;
@@ -143,7 +149,7 @@ void test_typed_roundtrip(void) {
     TEST(typed_roundtrip);
     TSimple s = {1, ason_string_from("Bob"), false};
     ason_buf_t buf = ason_encode_typed_TSimple(&s);
-    ASSERT_TRUE(strstr(buf.data, "id:int") != NULL || strstr(buf.data, "id:i64") != NULL);
+    ASSERT_TRUE(strstr(buf.data, "id@int") != NULL || strstr(buf.data, "id@i64") != NULL);
     TSimple s2 = {0};
     ason_err_t err = ason_decode_TSimple(buf.data, buf.len, &s2);
     ASSERT_TRUE(err == ASON_OK);
@@ -178,7 +184,7 @@ void test_vec_typed_roundtrip(void) {
     TEST(vec_typed_roundtrip);
     TSimple vec[] = {{1, ason_string_from("A"), true}};
     ason_buf_t buf = ason_encode_typed_vec_TSimple(vec, 1);
-    ASSERT_TRUE(strstr(buf.data, "id:") != NULL);
+    ASSERT_TRUE(strstr(buf.data, "id@") != NULL);
     TSimple* vec2 = NULL; size_t n = 0;
     ason_err_t err = ason_decode_vec_TSimple(buf.data, buf.len, &vec2, &n);
     ASSERT_TRUE(err == ASON_OK);
@@ -235,7 +241,7 @@ void test_optional_dump(void) {
 
 void test_vec_field(void) {
     TEST(vec_field);
-    const char* input = "{name,nums}:(test,[1,2,3,4,5])";
+    const char* input = "{name,nums@[]}:(test,[1,2,3,4,5])";
     TWithVec r = {0};
     ason_err_t err = ason_decode_TWithVec(input, strlen(input), &r);
     ASSERT_TRUE(err == ASON_OK);
@@ -249,13 +255,14 @@ void test_vec_field(void) {
 
 void test_empty_vec(void) {
     TEST(empty_vec);
-    const char* input = "{name,nums}:(test,[])";
+    const char* input = "{name,nums@[]}:(test,[])";
     TWithVec r = {0};
     ason_err_t err = ason_decode_TWithVec(input, strlen(input), &r);
     ASSERT_TRUE(err == ASON_OK);
     ASSERT_EQ_S(r.name.data, "test");
     ASSERT_EQ_U(r.nums.len, 0u);
     ason_buf_t buf = ason_encode_TWithVec(&r);
+    ASSERT_TRUE(strstr(buf.data, "nums@[]") != NULL);
     TWithVec r2 = {0};
     err = ason_decode_TWithVec(buf.data, buf.len, &r2);
     ASSERT_TRUE(err == ASON_OK);
@@ -266,7 +273,7 @@ void test_empty_vec(void) {
 
 void test_nested_struct(void) {
     TEST(nested_struct);
-    const char* input = "{label,inner:{val,n}}:(hello,(world,42))";
+    const char* input = "{label,inner@{val,n}}:(hello,(world,42))";
     TOuter r = {0};
     ason_err_t err = ason_decode_TOuter(input, strlen(input), &r);
     ASSERT_TRUE(err == ASON_OK);
@@ -281,6 +288,7 @@ void test_nested_roundtrip(void) {
     TEST(nested_roundtrip);
     TOuter o = {ason_string_from("test"), {ason_string_from("value"), 99}};
     ason_buf_t buf = ason_encode_TOuter(&o);
+    ASSERT_TRUE(strstr(buf.data, "inner@{val,n}") != NULL);
     TOuter o2 = {0};
     ason_err_t err = ason_decode_TOuter(buf.data, buf.len, &o2);
     ASSERT_TRUE(err == ASON_OK);
@@ -291,39 +299,37 @@ void test_nested_roundtrip(void) {
     PASS();
 }
 
-void test_map_field(void) {
-    TEST(map_field);
-    const char* input = "{name,attrs}:(Alice,[(age,30),(score,95)])";
-    TWithMap r = {0};
-    ason_err_t err = ason_decode_TWithMap(input, strlen(input), &r);
+void test_entry_list_field(void) {
+    TEST(entry_list_field);
+    const char* input = "{name,attrs@[{key,value}]}:(Alice,[(age,30),(score,95)])";
+    TWithEntries r = {0};
+    ason_err_t err = ason_decode_TWithEntries(input, strlen(input), &r);
     ASSERT_TRUE(err == ASON_OK);
     ASSERT_EQ_S(r.name.data, "Alice");
     ASSERT_EQ_U(r.attrs.len, 2u);
-    /* find age */
     bool found_age = false, found_score = false;
     for (size_t i = 0; i < r.attrs.len; i++) {
-        if (strcmp(r.attrs.data[i].key.data, "age") == 0) { ASSERT_EQ_I(r.attrs.data[i].val, 30); found_age = true; }
-        if (strcmp(r.attrs.data[i].key.data, "score") == 0) { ASSERT_EQ_I(r.attrs.data[i].val, 95); found_score = true; }
+        if (strcmp(r.attrs.data[i].key.data, "age") == 0) { ASSERT_EQ_I(r.attrs.data[i].value, 30); found_age = true; }
+        if (strcmp(r.attrs.data[i].key.data, "score") == 0) { ASSERT_EQ_I(r.attrs.data[i].value, 95); found_score = true; }
     }
     ASSERT_TRUE(found_age); ASSERT_TRUE(found_score);
-    free_twithmap(&r);
+    free_twithentries(&r);
     PASS();
 }
 
-void test_map_roundtrip(void) {
-    TEST(map_roundtrip);
-    TWithMap m = {ason_string_from("Bob"), ason_map_si_new()};
-    ason_map_si_entry_t e1 = {ason_string_from("x"), 1};
-    ason_map_si_entry_t e2 = {ason_string_from("y"), 2};
-    ason_map_si_push(&m.attrs, e1);
-    ason_map_si_push(&m.attrs, e2);
-    ason_buf_t buf = ason_encode_TWithMap(&m);
-    TWithMap m2 = {0};
-    ason_err_t err = ason_decode_TWithMap(buf.data, buf.len, &m2);
+void test_entry_list_roundtrip(void) {
+    TEST(entry_list_roundtrip);
+    TWithEntries m = {ason_string_from("Bob"), ason_vec_TAttr_new()};
+    ason_vec_TAttr_push(&m.attrs, (TAttr){ason_string_from("x"), 1});
+    ason_vec_TAttr_push(&m.attrs, (TAttr){ason_string_from("y"), 2});
+    ason_buf_t buf = ason_encode_TWithEntries(&m);
+    ASSERT_TRUE(strstr(buf.data, "attrs@[{key,value}]") != NULL);
+    TWithEntries m2 = {0};
+    ason_err_t err = ason_decode_TWithEntries(buf.data, buf.len, &m2);
     ASSERT_TRUE(err == ASON_OK);
     ASSERT_EQ_S(m2.name.data, "Bob");
     ASSERT_EQ_U(m2.attrs.len, 2u);
-    ason_buf_free(&buf); free_twithmap(&m); free_twithmap(&m2);
+    ason_buf_free(&buf); free_twithentries(&m); free_twithentries(&m2);
     PASS();
 }
 
@@ -544,7 +550,7 @@ void test_multiline(void) {
 
 void test_typed_schema_parse(void) {
     TEST(typed_schema_parse);
-    const char* input = "{id:int,name:str,active:bool}:(42,Hello,false)";
+    const char* input = "{id@int,name@str,active@bool}:(42,Hello,false)";
     TSimple r = {0};
     ason_err_t err = ason_decode_TSimple(input, strlen(input), &r);
     ASSERT_TRUE(err == ASON_OK);
@@ -670,8 +676,8 @@ void test_backslash_escape(void) {
  * Format validation tests
  * =========================================================================== */
 
-static const char* BAD_FMT  = "{id:int,name:str}:\n  (1,Alice),\n  (2,Bob),\n  (3,Carol)";
-static const char* GOOD_FMT = "[{id:int,name:str}]:\n  (1,Alice),\n  (2,Bob),\n  (3,Carol)";
+static const char* BAD_FMT  = "{id,name}:\n  (1,Alice),\n  (2,Bob),\n  (3,Carol)";
+static const char* GOOD_FMT = "[{id,name}]:\n  (1,Alice),\n  (2,Bob),\n  (3,Carol)";
 
 /* TFmtRow shares the same layout as TSimple-minus-active; use TSimple */
 typedef struct { int64_t id; ason_string_t name; } TFmtRow;
@@ -729,7 +735,7 @@ void test_good_format_as_vec(void) {
 void test_bad_format_extra_tuples(void) {
     /* Two tuples without [] wrapper — single decode should fail on trailing chars */
     TEST(bad_format_extra_tuples);
-    const char* bad = "{id:int,name:str}:(10,Dave),(11,Eve)";
+    const char* bad = "{id,name}:(10,Dave),(11,Eve)";
     TFmtRow r = {0};
     ason_err_t err = ason_decode_TFmtRow(bad, strlen(bad), &r);
     if (r.name.data) ason_string_free(&r.name);
@@ -740,7 +746,7 @@ void test_bad_format_extra_tuples(void) {
 void test_good_format_single(void) {
     /* {schema}: (1, Alice) — single struct with one tuple: MUST succeed */
     TEST(good_format_single);
-    const char* good = "{id:int,name:str}:(1,Alice)";
+    const char* good = "{id,name}:(1,Alice)";
     TFmtRow r = {0};
     ason_err_t err = ason_decode_TFmtRow(good, strlen(good), &r);
     if (err != ASON_OK) { FAIL("should accept single struct with one tuple"); }
@@ -753,7 +759,7 @@ void test_good_format_single(void) {
 void test_good_format_vec_single(void) {
     /* [{schema}]: (1, Alice) — array schema with one tuple: MUST succeed */
     TEST(good_format_vec_single);
-    const char* good = "[{id:int,name:str}]:(1,Alice)";
+    const char* good = "[{id,name}]:(1,Alice)";
     TFmtRow* rows = NULL;
     size_t count = 0;
     ason_err_t err = ason_decode_vec_TFmtRow(good, strlen(good), &rows, &count);
@@ -902,7 +908,7 @@ void test_encode_typed_bool_vec_field(void) {
     ason_vec_bool_push(&w.flags, false);
     ason_vec_bool_push(&w.flags, true);
     ason_buf_t buf = ason_encode_typed_TWithBoolVec(&w);
-    ASSERT_TRUE(strstr(buf.data, "flags:[bool]") != NULL);
+    ASSERT_TRUE(strstr(buf.data, "flags@[bool]") != NULL);
     TWithBoolVec w2 = {0};
     ason_err_t err = ason_decode_TWithBoolVec(buf.data, buf.len, &w2);
     ASSERT_TRUE(err == ASON_OK);
@@ -923,7 +929,7 @@ void test_encode_typed_int_vec_field(void) {
     ason_vec_i64_push(&w.nums, 20);
     ason_vec_i64_push(&w.nums, 30);
     ason_buf_t buf = ason_encode_typed_TWithIntVec(&w);
-    ASSERT_TRUE(strstr(buf.data, "nums:[int]") != NULL);
+    ASSERT_TRUE(strstr(buf.data, "nums@[int]") != NULL);
     TWithIntVec w2 = {0};
     ason_err_t err = ason_decode_TWithIntVec(buf.data, buf.len, &w2);
     ASSERT_TRUE(err == ASON_OK);
@@ -942,7 +948,7 @@ void test_encode_typed_str_vec_field(void) {
     ason_vec_str_push(&w.tags, ason_string_from("a"));
     ason_vec_str_push(&w.tags, ason_string_from("b"));
     ason_buf_t buf = ason_encode_typed_TWithStrVec(&w);
-    ASSERT_TRUE(strstr(buf.data, "tags:[str]") != NULL);
+    ASSERT_TRUE(strstr(buf.data, "tags@[str]") != NULL);
     TWithStrVec w2 = {0};
     ason_err_t err = ason_decode_TWithStrVec(buf.data, buf.len, &w2);
     ASSERT_TRUE(err == ASON_OK);
@@ -961,7 +967,7 @@ void test_encode_typed_empty_bool_vec(void) {
     TEST(encode_typed_empty_bool_vec);
     TWithBoolVec w = {0};
     ason_buf_t buf = ason_encode_typed_TWithBoolVec(&w);
-    ASSERT_TRUE(strstr(buf.data, "flags:[bool]") != NULL);
+    ASSERT_TRUE(strstr(buf.data, "flags@[bool]") != NULL);
     ASSERT_TRUE(strstr(buf.data, "[]") != NULL);
     ason_buf_free(&buf);
     PASS();
@@ -1009,8 +1015,8 @@ int main(void) {
     test_vec_field();
     test_empty_vec();
     test_nested_vec();
-    test_map_field();
-    test_map_roundtrip();
+    test_entry_list_field();
+    test_entry_list_roundtrip();
 
     printf("\n--- Nested structs ---\n");
     test_nested_struct();

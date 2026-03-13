@@ -30,14 +30,22 @@ ASON_FIELDS(Employee, 5, ASON_FIELD(Employee, id, "id", i64),
             ASON_FIELD(Employee, skills, "skills", vec_str),
             ASON_FIELD(Employee, active, "active", bool))
 
-/* WithMap */
+/* Entry-list examples */
+typedef struct {
+  ason_string_t key;
+  int64_t value;
+} AttrEntry;
+ASON_FIELDS(AttrEntry, 2, ASON_FIELD(AttrEntry, key, "key", str),
+            ASON_FIELD(AttrEntry, value, "value", i64))
+ASON_VEC_STRUCT_DEFINE(AttrEntry)
+
 typedef struct {
   ason_string_t name;
-  ason_map_si attrs;
-} WithMap;
+  ason_vec_AttrEntry attrs;
+} WithEntries;
 
-ASON_FIELDS(WithMap, 2, ASON_FIELD(WithMap, name, "name", str),
-            ASON_FIELD(WithMap, attrs, "attrs", map_si))
+ASON_FIELDS(WithEntries, 2, ASON_FIELD(WithEntries, name, "name", str),
+            ASON_FIELD_VEC_STRUCT(WithEntries, attrs, "attrs", AttrEntry))
 
 /* Address / Nested */
 typedef struct {
@@ -284,13 +292,21 @@ ASON_FIELDS(LogConfig, 3, ASON_FIELD(LogConfig, level, "level", str),
             ASON_FIELD(LogConfig, rotate, "rotate", bool))
 
 typedef struct {
+  ason_string_t key;
+  ason_string_t value;
+} EnvEntry;
+ASON_FIELDS(EnvEntry, 2, ASON_FIELD(EnvEntry, key, "key", str),
+            ASON_FIELD(EnvEntry, value, "value", str))
+ASON_VEC_STRUCT_DEFINE(EnvEntry)
+
+typedef struct {
   ason_string_t name;
   ason_string_t version;
   DbConfig db;
   CacheConfig cache;
   LogConfig log;
   ason_vec_str features;
-  ason_map_ss env;
+  ason_vec_EnvEntry env;
 } ServiceConfig;
 
 ASON_FIELDS(ServiceConfig, 7, ASON_FIELD(ServiceConfig, name, "name", str),
@@ -300,7 +316,7 @@ ASON_FIELDS(ServiceConfig, 7, ASON_FIELD(ServiceConfig, name, "name", str),
                               &CacheConfig_ason_desc),
             ASON_FIELD_STRUCT(ServiceConfig, log, "log", &LogConfig_ason_desc),
             ASON_FIELD(ServiceConfig, features, "features", vec_str),
-            ASON_FIELD(ServiceConfig, env, "env", map_ss))
+            ASON_FIELD_VEC_STRUCT(ServiceConfig, env, "env", EnvEntry))
 
 /* Note, Measurement, Nums, Special, Matrix3D, WithVec — for edge cases */
 typedef struct {
@@ -391,7 +407,7 @@ int main(void) {
   printf("1. Nested struct:\n");
   {
     const char *input =
-        "{id,name,dept:{title},skills,active}:(1,Alice,(Manager),[rust],true)";
+        "{id,name,dept@{title},skills@[],active}:(1,Alice,(Manager),[rust],true)";
     Employee emp = {0};
     ason_err_t err = ason_decode_Employee(input, strlen(input), &emp);
     assert(err == ASON_OK);
@@ -415,7 +431,7 @@ int main(void) {
   printf("2. Vec with nested structs:\n");
   {
     const char *input =
-        "[{id:int,name:str,dept:{title:str},skills:[str],active:bool}]:"
+        "[{id,name,dept@{title},skills@[str],active}]:"
         "(1,Alice,(Manager),[Rust,Go],true),"
         "(2,Bob,(Engineer),[Python],false),"
         "(3,\"Carol Smith\",(Director),[Leadership,Strategy],true)";
@@ -437,25 +453,25 @@ int main(void) {
     passed++;
   }
 
-  /* 3. Map/Dict field */
-  printf("3. Map/Dict field:\n");
+  /* 3. Entry-list field */
+  printf("3. Entry-list field:\n");
   {
-    const char *input = "{name,attrs}:(Alice,[(age,30),(score,95)])";
-    WithMap item = {0};
-    ason_err_t err = ason_decode_WithMap(input, strlen(input), &item);
+    const char *input = "{name,attrs@[{key,value}]}:(Alice,[(age,30),(score,95)])";
+    WithEntries item = {0};
+    ason_err_t err = ason_decode_WithEntries(input, strlen(input), &item);
     assert(err == ASON_OK);
-    printf("   name=%s attrs={", item.name.data);
+    printf("   name=%s attrs=[", item.name.data);
     for (size_t i = 0; i < item.attrs.len; i++) {
       if (i)
         printf(",");
-      printf("%s:%lld", item.attrs.data[i].key.data,
-             (long long)item.attrs.data[i].val);
+      printf("(%s,%lld)", item.attrs.data[i].key.data,
+             (long long)item.attrs.data[i].value);
     }
-    printf("}\n\n");
+    printf("]\n\n");
     ason_string_free(&item.name);
     for (size_t i = 0; i < item.attrs.len; i++)
       ason_string_free(&item.attrs.data[i].key);
-    ason_map_si_free(&item.attrs);
+    ason_vec_AttrEntry_free(&item.attrs);
     passed++;
   }
 
@@ -771,17 +787,16 @@ int main(void) {
     ason_vec_str_push(&cfg.features, ason_string_from("auth"));
     ason_vec_str_push(&cfg.features, ason_string_from("rate-limit"));
     ason_vec_str_push(&cfg.features, ason_string_from("websocket"));
-    cfg.env = ason_map_ss_new();
-    ason_map_ss_entry_t e1 = {ason_string_from("RUST_LOG"),
-                              ason_string_from("debug")};
-    ason_map_ss_entry_t e2 = {
-        ason_string_from("DATABASE_URL"),
-        ason_string_from("postgres://localhost:5432/mydb")};
-    ason_map_ss_entry_t e3 = {ason_string_from("SECRET_KEY"),
-                              ason_string_from("abc123!@#")};
-    ason_map_ss_push(&cfg.env, e1);
-    ason_map_ss_push(&cfg.env, e2);
-    ason_map_ss_push(&cfg.env, e3);
+    cfg.env = ason_vec_EnvEntry_new();
+    ason_vec_EnvEntry_push(&cfg.env,
+                           (EnvEntry){ason_string_from("RUST_LOG"),
+                                      ason_string_from("debug")});
+    ason_vec_EnvEntry_push(&cfg.env,
+                           (EnvEntry){ason_string_from("DATABASE_URL"),
+                                      ason_string_from("postgres://localhost:5432/mydb")});
+    ason_vec_EnvEntry_push(&cfg.env,
+                           (EnvEntry){ason_string_from("SECRET_KEY"),
+                                      ason_string_from("abc123!@#")});
 
     ason_buf_t buf = ason_encode_ServiceConfig(&cfg);
     printf("   serialized (%zu bytes):\n   %.*s\n", buf.len,
@@ -806,9 +821,9 @@ int main(void) {
     ason_vec_str_free(&cfg.features);
     for (size_t i = 0; i < cfg.env.len; i++) {
       ason_string_free(&cfg.env.data[i].key);
-      ason_string_free(&cfg.env.data[i].val);
+      ason_string_free(&cfg.env.data[i].value);
     }
-    ason_map_ss_free(&cfg.env);
+    ason_vec_EnvEntry_free(&cfg.env);
     ason_string_free(&cfg2.name);
     ason_string_free(&cfg2.version);
     ason_string_free(&cfg2.db.host);
@@ -820,9 +835,9 @@ int main(void) {
     ason_vec_str_free(&cfg2.features);
     for (size_t i = 0; i < cfg2.env.len; i++) {
       ason_string_free(&cfg2.env.data[i].key);
-      ason_string_free(&cfg2.env.data[i].val);
+      ason_string_free(&cfg2.env.data[i].value);
     }
-    ason_map_ss_free(&cfg2.env);
+    ason_vec_EnvEntry_free(&cfg2.env);
     passed++;
   }
 
@@ -925,7 +940,7 @@ int main(void) {
   printf("14. Comments:\n");
   {
     const char *input =
-        "/* Top-level */ {id,name,dept:{title},skills,active}:/* inline */ "
+        "/* Top-level */ {id,name,dept@{title},skills@[],active}:/* inline */ "
         "(1,Alice,(HR),[rust],true)";
     Employee emp = {0};
     ason_err_t err = ason_decode_Employee(input, strlen(input), &emp);

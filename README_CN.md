@@ -13,13 +13,13 @@ ASON 只写一次 Schema，后续每一行只保留值：
 
 ```json
 [
-  {"id": 1, "name": "Alice", "active": true},
-  {"id": 2, "name": "Bob", "active": false}
+  { "id": 1, "name": "Alice", "active": true },
+  { "id": 2, "name": "Bob", "active": false }
 ]
 ```
 
 ```text
-[{id:int,name:str,active:bool}]:(1,Alice,true),(2,Bob,false)
+[{id@int,name@str,active@bool}]:(1,Alice,true),(2,Bob,false)
 ```
 
 这通常意味着更少的 token、更小的体积，以及比重复键名 JSON 更快的解析。
@@ -30,7 +30,8 @@ ASON 只写一次 Schema，后续每一行只保留值：
 - SIMD 优化解析，带标量回退
 - 文本解析尽量零拷贝
 - 同时支持 ASON 文本和紧凑二进制格式
-- 支持字符串、数字、布尔、可选字段、向量、映射、嵌套结构体、结构体数组
+- 支持字符串、数字、布尔、可选字段、数组、嵌套结构体、结构体数组
+- 键值风格数据请通过普通结构体数组来建模，使用 `ASON_FIELD_VEC_STRUCT(...)`
 
 ## 快速开始
 
@@ -61,7 +62,7 @@ ason_buf_t text = ason_encode_User(&user);
 // {id,name,active}:(1,Alice,true)
 
 ason_buf_t typed = ason_encode_typed_User(&user);
-// {id:int,name:str,active:bool}:(1,Alice,true)
+// {id@int,name@str,active@bool}:(1,Alice,true)
 
 User decoded = {0};
 ason_err_t err = ason_decode_User(text.data, text.len, &decoded);
@@ -102,14 +103,14 @@ assert(err == ASON_OK);
 
 ## 当前 API
 
-| 函数组 | 作用 |
-| --- | --- |
-| `ason_encode_T` / `ason_encode_typed_T` | 编码单个结构体到文本 |
-| `ason_decode_T` | 从文本解码单个结构体 |
+| 函数组                                          | 作用                 |
+| ----------------------------------------------- | -------------------- |
+| `ason_encode_T` / `ason_encode_typed_T`         | 编码单个结构体到文本 |
+| `ason_decode_T`                                 | 从文本解码单个结构体 |
 | `ason_encode_vec_T` / `ason_encode_typed_vec_T` | 编码结构体数组到文本 |
-| `ason_decode_vec_T` | 从文本解码结构体数组 |
-| `ason_encode_bin_T` / `ason_encode_bin_vec_T` | 编码到二进制 |
-| `ason_decode_bin_T` / `ason_decode_bin_vec_T` | 从二进制解码 |
+| `ason_decode_vec_T`                             | 从文本解码结构体数组 |
+| `ason_encode_bin_T` / `ason_encode_bin_vec_T`   | 编码到二进制         |
+| `ason_decode_bin_T` / `ason_decode_bin_vec_T`   | 从二进制解码         |
 
 其中 `T` 来自你的 `ASON_FIELDS(...)` 声明。
 
@@ -124,7 +125,7 @@ cmake --build build
 ctest --test-dir build
 ```
 
-## Latest Benchmarks
+## 最新基准
 
 在当前这台机器上通过下面命令实测：
 
@@ -140,6 +141,12 @@ ctest --test-dir build
 - 二进制路径是这轮测试里最快的：在 1,000 条扁平记录上，序列化比 JSON 快 `6.31x`，反序列化快 `7.52x`
 
 对于 100 条五层嵌套 company 数据，ASON 文本反序列化比 JSON 快 `3.10x`，文本体积缩小 `61%`。
+
+## 说明
+
+- `@int`、`@str` 这类终端标注是可选元数据。
+- 对复杂字段，结构标记不是可选的：嵌套对象和数组必须保留 `@{...}` 或 `@[...]`。
+- 当前 C 实现已经和最新规范对齐，不再支持旧的专用 map API。
 
 ## Contributors
 

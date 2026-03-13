@@ -154,34 +154,6 @@ void ason_encode_vec_vec_i64(ason_buf_t* buf, const void* base, size_t offset) {
     ason_buf_push(buf, ']');
 }
 
-void ason_encode_map_si(ason_buf_t* buf, const void* base, size_t offset) {
-    const ason_map_si* m = (const ason_map_si*)((const char*)base + offset);
-    ason_buf_push(buf, '[');
-    for (size_t i = 0; i < m->len; i++) {
-        if (i > 0) ason_buf_push(buf, ',');
-        ason_buf_push(buf, '(');
-        ason_buf_append_str(buf, m->data[i].key.data, m->data[i].key.len);
-        ason_buf_push(buf, ',');
-        ason_buf_append_i64(buf, m->data[i].val);
-        ason_buf_push(buf, ')');
-    }
-    ason_buf_push(buf, ']');
-}
-
-void ason_encode_map_ss(ason_buf_t* buf, const void* base, size_t offset) {
-    const ason_map_ss* m = (const ason_map_ss*)((const char*)base + offset);
-    ason_buf_push(buf, '[');
-    for (size_t i = 0; i < m->len; i++) {
-        if (i > 0) ason_buf_push(buf, ',');
-        ason_buf_push(buf, '(');
-        ason_buf_append_str(buf, m->data[i].key.data, m->data[i].key.len);
-        ason_buf_push(buf, ',');
-        ason_buf_append_str(buf, m->data[i].val.data, m->data[i].val.len);
-        ason_buf_push(buf, ')');
-    }
-    ason_buf_push(buf, ']');
-}
-
 /* ============================================================================
  * Load functions
  * ============================================================================ */
@@ -569,98 +541,18 @@ ason_err_t ason_decode_vec_vec_i64(const char** pos, const char* end, void* base
     return ASON_OK;
 }
 
-ason_err_t ason_decode_map_si(const char** pos, const char* end, void* base, size_t offset) {
-    ason_skip_ws(pos, end);
-    if (*pos >= end || **pos != '[') return ASON_ERR_SYNTAX;
-    (*pos)++;
-    ason_map_si* m = (ason_map_si*)((char*)base + offset);
-    *m = ason_map_si_new();
-    bool first = true;
-    while (1) {
-        ason_skip_ws(pos, end);
-        if (*pos >= end || **pos == ']') { (*pos)++; break; }
-        if (!first) {
-            if (**pos == ',') { (*pos)++; ason_skip_ws(pos, end); if (*pos < end && **pos == ']') { (*pos)++; break; } }
-            else break;
-        }
-        first = false;
-        if (*pos >= end || **pos != '(') return ASON_ERR_SYNTAX;
-        (*pos)++;
-        /* key */
-        char* kstr = NULL; size_t klen = 0; bool kall = false;
-        ason_err_t e = ason_parse_string_value(pos, end, &kstr, &klen, &kall);
-        if (e != ASON_OK) return e;
-        ason_skip_ws(pos, end);
-        if (*pos < end && **pos == ',') (*pos)++;
-        /* value */
-        int64_t val;
-        e = load_i64_raw(pos, end, &val);
-        if (e != ASON_OK) return e;
-        ason_skip_ws(pos, end);
-        if (*pos < end && **pos == ')') (*pos)++;
-        ason_map_si_entry_t entry;
-        if (kall) {
-            entry.key.data = kstr;
-            entry.key.len = klen;
-        } else {
-            entry.key.data = (char*)malloc(klen + 1);
-            memcpy(entry.key.data, kstr, klen);
-            entry.key.data[klen] = '\0';
-            entry.key.len = klen;
-        }
-        entry.val = val;
-        ason_map_si_push(m, entry);
+static bool ason_type_is_array(ason_type_t type) {
+    switch (type) {
+        case ASON_VEC_I64:
+        case ASON_VEC_U64:
+        case ASON_VEC_F64:
+        case ASON_VEC_STR:
+        case ASON_VEC_BOOL:
+        case ASON_VEC_VEC_I64:
+            return true;
+        default:
+            return false;
     }
-    return ASON_OK;
-}
-
-ason_err_t ason_decode_map_ss(const char** pos, const char* end, void* base, size_t offset) {
-    ason_skip_ws(pos, end);
-    if (*pos >= end || **pos != '[') return ASON_ERR_SYNTAX;
-    (*pos)++;
-    ason_map_ss* m = (ason_map_ss*)((char*)base + offset);
-    *m = ason_map_ss_new();
-    bool first = true;
-    while (1) {
-        ason_skip_ws(pos, end);
-        if (*pos >= end || **pos == ']') { (*pos)++; break; }
-        if (!first) {
-            if (**pos == ',') { (*pos)++; ason_skip_ws(pos, end); if (*pos < end && **pos == ']') { (*pos)++; break; } }
-            else break;
-        }
-        first = false;
-        if (*pos >= end || **pos != '(') return ASON_ERR_SYNTAX;
-        (*pos)++;
-        /* key */
-        char* kstr = NULL; size_t klen = 0; bool kall = false;
-        ason_err_t e = ason_parse_string_value(pos, end, &kstr, &klen, &kall);
-        if (e != ASON_OK) return e;
-        ason_skip_ws(pos, end);
-        if (*pos < end && **pos == ',') (*pos)++;
-        /* value */
-        char* vstr = NULL; size_t vlen = 0; bool vall = false;
-        e = ason_parse_string_value(pos, end, &vstr, &vlen, &vall);
-        if (e != ASON_OK) return e;
-        ason_skip_ws(pos, end);
-        if (*pos < end && **pos == ')') (*pos)++;
-        ason_map_ss_entry_t entry;
-        if (kall) {
-            entry.key.data = kstr;
-            entry.key.len = klen;
-        } else {
-            entry.key.data = (char*)malloc(klen + 1);
-            memcpy(entry.key.data, kstr, klen); entry.key.data[klen] = '\0'; entry.key.len = klen;
-        }
-        if (vall) {
-            entry.val.data = vstr;
-            entry.val.len = vlen;
-        } else {
-            entry.val.data = (char*)malloc(vlen + 1);
-            memcpy(entry.val.data, vstr, vlen); entry.val.data[vlen] = '\0'; entry.val.len = vlen;
-        }
-        ason_map_ss_push(m, entry);
-    }
-    return ASON_OK;
 }
 
 /* ============================================================================
@@ -674,16 +566,18 @@ void ason_write_schema(ason_buf_t* buf, const ason_desc_t* desc) {
         const ason_field_t* f = &desc->fields[i];
         ason_buf_append(buf, f->name, f->name_len);
         if (f->type == ASON_STRUCT && f->sub_desc) {
-            ason_buf_push(buf, ':');
+            ason_buf_push(buf, '@');
             if (f->dump_fn) {
-                /* vec-of-struct: write :[{...}] */
+                /* vec-of-struct: write @[{...}] */
                 ason_buf_push(buf, '[');
                 ason_write_schema(buf, (const ason_desc_t*)f->sub_desc);
                 ason_buf_push(buf, ']');
             } else {
-                /* direct struct: write :{...} */
+                /* direct struct: write @{...} */
                 ason_write_schema(buf, (const ason_desc_t*)f->sub_desc);
             }
+        } else if (ason_type_is_array(f->type)) {
+            ason_buf_appends(buf, "@[]");
         }
     }
     ason_buf_push(buf, '}');
@@ -696,7 +590,7 @@ void ason_write_schema_typed(ason_buf_t* buf, const ason_desc_t* desc) {
         const ason_field_t* f = &desc->fields[i];
         ason_buf_append(buf, f->name, f->name_len);
         if (f->type == ASON_STRUCT && f->sub_desc) {
-            ason_buf_push(buf, ':');
+            ason_buf_push(buf, '@');
             if (f->dump_fn) {
                 ason_buf_push(buf, '[');
                 ason_write_schema_typed(buf, (const ason_desc_t*)f->sub_desc);
@@ -705,7 +599,7 @@ void ason_write_schema_typed(ason_buf_t* buf, const ason_desc_t* desc) {
                 ason_write_schema_typed(buf, (const ason_desc_t*)f->sub_desc);
             }
         } else if (f->type_str) {
-            ason_buf_push(buf, ':');
+            ason_buf_push(buf, '@');
             ason_buf_appends(buf, f->type_str);
         }
     }

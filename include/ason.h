@@ -189,16 +189,6 @@ ASON_VEC_DEFINE(ason_vec_bool, bool)
 ASON_VEC_DEFINE(ason_vec_vec_i64, ason_vec_i64)
 
 /* ============================================================================
- * Map (string -> int64_t, string -> string)
- * ============================================================================ */
-
-typedef struct { ason_string_t key; int64_t val; } ason_map_si_entry_t;
-ASON_VEC_DEFINE(ason_map_si, ason_map_si_entry_t)
-
-typedef struct { ason_string_t key; ason_string_t val; } ason_map_ss_entry_t;
-ASON_VEC_DEFINE(ason_map_ss, ason_map_ss_entry_t)
-
-/* ============================================================================
  * Optional (has_value + value)
  * ============================================================================ */
 
@@ -221,7 +211,6 @@ typedef enum {
     ASON_VEC_I64, ASON_VEC_U64, ASON_VEC_F64,
     ASON_VEC_STR, ASON_VEC_BOOL,
     ASON_VEC_VEC_I64,
-    ASON_MAP_SI, ASON_MAP_SS,
     ASON_STRUCT,
 } ason_type_t;
 
@@ -308,8 +297,11 @@ ason_inline bool ason_needs_quoting(const char* s, size_t len) {
     /* Leading/trailing whitespace */
     if (s[0] == ' ' || s[0] == '\t' || s[len-1] == ' ' || s[len-1] == '\t') return true;
     /* Bool/number-like */
-    if (len >= 4 && (memcmp(s, "true", 4) == 0 || memcmp(s, "null", 4) == 0)) return true;
-    if (len == 5 && memcmp(s, "false", 5) == 0) return true;
+    if (len == 4 &&
+        ((s[0] == 't' && s[1] == 'r' && s[2] == 'u' && s[3] == 'e') ||
+         (s[0] == 'n' && s[1] == 'u' && s[2] == 'l' && s[3] == 'l'))) return true;
+    if (len == 5 &&
+        s[0] == 'f' && s[1] == 'a' && s[2] == 'l' && s[3] == 's' && s[4] == 'e') return true;
     if ((s[0] >= '0' && s[0] <= '9') || s[0] == '-' || s[0] == '+') return true;
 
 #if defined(ASON_NEON)
@@ -726,7 +718,7 @@ ason_inline void ason_skip_remaining_tuple_values(const char** pos, const char* 
     }
 }
 
-/* Parse the schema: {field1,field2,...} or {field1:type1,...} */
+/* Parse the schema: {field1,field2,...} or {field1@type1,...} */
 /* Returns field names (just pointers + lengths into the input). */
 typedef struct { const char* name; size_t len; } ason_schema_field_t;
 
@@ -747,16 +739,16 @@ ason_inline ason_err_t ason_parse_schema(const char** pos, const char* end,
         }
         /* Field name */
         const char* name_start = *pos;
-        while (*pos < end && **pos != ',' && **pos != ':' && **pos != '}' &&
+        while (*pos < end && **pos != ',' && **pos != '@' && **pos != '}' &&
                **pos != ' ' && **pos != '\t' && **pos != '\n' && **pos != '\r' &&
                **pos != '{') (*pos)++;
         size_t name_len = *pos - name_start;
         fields[n].name = name_start;
         fields[n].len = name_len;
         n++;
-        /* Skip type annotation if present: :type  or  :{...} or :[...] */
+        /* Skip type annotation if present: @type  or  @{...} or @[...] */
         ason_skip_ws(pos, end);
-        if (*pos < end && **pos == ':') {
+        if (*pos < end && **pos == '@') {
             (*pos)++;
             ason_skip_ws(pos, end);
             if (*pos < end) {
@@ -768,11 +760,6 @@ ason_inline ason_err_t ason_parse_schema(const char** pos, const char* end,
                            **pos != ' ' && **pos != '\t') (*pos)++;
                 }
             }
-        }
-        /* Inline sub-schema {}: skip it */
-        ason_skip_ws(pos, end);
-        if (*pos < end && **pos == '{') {
-            ason_skip_balanced(pos, end, '{', '}');
         }
     }
     *count = n;
@@ -805,8 +792,6 @@ void ason_encode_vec_f64(ason_buf_t* buf, const void* base, size_t offset);
 void ason_encode_vec_str(ason_buf_t* buf, const void* base, size_t offset);
 void ason_encode_vec_bool(ason_buf_t* buf, const void* base, size_t offset);
 void ason_encode_vec_vec_i64(ason_buf_t* buf, const void* base, size_t offset);
-void ason_encode_map_si(ason_buf_t* buf, const void* base, size_t offset);
-void ason_encode_map_ss(ason_buf_t* buf, const void* base, size_t offset);
 
 ason_err_t ason_decode_bool(const char** pos, const char* end, void* base, size_t offset);
 ason_err_t ason_decode_i8(const char** pos, const char* end, void* base, size_t offset);
@@ -830,8 +815,6 @@ ason_err_t ason_decode_vec_f64(const char** pos, const char* end, void* base, si
 ason_err_t ason_decode_vec_str(const char** pos, const char* end, void* base, size_t offset);
 ason_err_t ason_decode_vec_bool(const char** pos, const char* end, void* base, size_t offset);
 ason_err_t ason_decode_vec_vec_i64(const char** pos, const char* end, void* base, size_t offset);
-ason_err_t ason_decode_map_si(const char** pos, const char* end, void* base, size_t offset);
-ason_err_t ason_decode_map_ss(const char** pos, const char* end, void* base, size_t offset);
 
 /* Generic struct dump/load via descriptor */
 void ason_encode_struct(ason_buf_t* buf, const void* obj, const ason_desc_t* desc);
@@ -879,8 +862,6 @@ ason_buf_t ason_pretty_format(const char* src, size_t len);
 #define ASON_TYPE_NAME_vec_str "[str]"
 #define ASON_TYPE_NAME_vec_bool "[bool]"
 #define ASON_TYPE_NAME_vec_vec_i64 "[[int]]"
-#define ASON_TYPE_NAME_map_si "map[str,int]"
-#define ASON_TYPE_NAME_map_ss "map[str,str]"
 
 #define ASON_TYPE_ENUM_bool  ASON_BOOL
 #define ASON_TYPE_ENUM_i8    ASON_I8
@@ -904,8 +885,6 @@ ason_buf_t ason_pretty_format(const char* src, size_t len);
 #define ASON_TYPE_ENUM_vec_str ASON_VEC_STR
 #define ASON_TYPE_ENUM_vec_bool ASON_VEC_BOOL
 #define ASON_TYPE_ENUM_vec_vec_i64 ASON_VEC_VEC_I64
-#define ASON_TYPE_ENUM_map_si ASON_MAP_SI
-#define ASON_TYPE_ENUM_map_ss ASON_MAP_SS
 
 #define ASON_FIELD(StructType, member, fname, ftype) \
     { fname, sizeof(fname) - 1, ASON_TYPE_ENUM_##ftype, \
@@ -1031,7 +1010,7 @@ ason_buf_t ason_pretty_format(const char* src, size_t len);
         if (pos < end) return ASON_ERR_SYNTAX; \
         return ASON_OK; \
     } \
-    /* encode_typed_vec: [{field:type,...}]:(row1),(row2),... */ \
+    /* encode_typed_vec: [{field@type,...}]:(row1),(row2),... */ \
     static inline ason_buf_t ason_encode_typed_vec_##StructType(const StructType* arr, size_t count) { \
         ason_buf_t buf = ason_buf_new(count * 64 + 128); \
         ason_buf_push(&buf, '['); \

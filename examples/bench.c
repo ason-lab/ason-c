@@ -87,6 +87,7 @@ ASON_FIELDS(BAllTypes, 16,
     ASON_FIELD(BAllTypes, vec_int,  "vec_int",  vec_i64),
     ASON_FIELD(BAllTypes, vec_str,  "vec_str",  vec_str))
 ASON_FIELDS_BIN(BAllTypes, 16)
+ASON_VEC_STRUCT_DEFINE(BAllTypes)
 
 /* 5-level: Company > Division > Team > Project > Task */
 typedef struct { int64_t id; ason_string_t title; int64_t priority; bool done; double hours; } BTask;
@@ -143,6 +144,7 @@ ASON_FIELDS(BCompany, 6,
     ASON_FIELD_VEC_STRUCT(BCompany, divisions, "divisions", BDivision),
     ASON_FIELD(BCompany, tags,      "tags",      vec_str))
 ASON_FIELDS_BIN(BCompany, 6)
+ASON_VEC_STRUCT_DEFINE(BCompany)
 
 /* ===========================================================================
  * Mini JSON serializer (for comparison)
@@ -163,6 +165,7 @@ static void json_append_str(ason_buf_t* b, const char* s, size_t len) {
 }
 
 static void json_append_i64(ason_buf_t* b, int64_t v) { ason_buf_append_i64(b, v); }
+static void json_append_u64(ason_buf_t* b, uint64_t v) { ason_buf_append_u64(b, v); }
 static void json_append_f64(ason_buf_t* b, double v) { ason_buf_append_f64(b, v); }
 
 #define JSON_KEY_STR(buf, key, s, slen) \
@@ -205,6 +208,54 @@ static ason_buf_t json_serialize_users(const BUser* users, size_t n) {
     return b;
 }
 
+static void json_serialize_alltypes_item(ason_buf_t* b, const BAllTypes* item) {
+    ason_buf_push(b, '{');
+    JSON_KEY_BOOL(b, "b", item->b); ason_buf_push(b, ',');
+    JSON_KEY_I64(b, "i8v", item->i8v); ason_buf_push(b, ',');
+    JSON_KEY_I64(b, "i16v", item->i16v); ason_buf_push(b, ',');
+    JSON_KEY_I64(b, "i32v", item->i32v); ason_buf_push(b, ',');
+    JSON_KEY_I64(b, "i64v", item->i64v); ason_buf_push(b, ',');
+    JSON_KEY_I64(b, "u8v", item->u8v); ason_buf_push(b, ',');
+    JSON_KEY_I64(b, "u16v", item->u16v); ason_buf_push(b, ',');
+    JSON_KEY_I64(b, "u32v", item->u32v); ason_buf_push(b, ',');
+    ason_buf_push(b, '"'); ason_buf_appends(b, "u64v\":"); json_append_u64(b, item->u64v); ason_buf_push(b, ',');
+    JSON_KEY_F64(b, "f32v", item->f32v); ason_buf_push(b, ',');
+    JSON_KEY_F64(b, "f64v", item->f64v); ason_buf_push(b, ',');
+    JSON_KEY_STR(b, "s", item->s.data, item->s.len); ason_buf_push(b, ',');
+    ason_buf_append(b, "\"opt_some\":", 11);
+    if (item->opt_some.has_value) json_append_i64(b, item->opt_some.value);
+    else ason_buf_appends(b, "null");
+    ason_buf_push(b, ',');
+    ason_buf_append(b, "\"opt_none\":", 11);
+    if (item->opt_none.has_value) json_append_i64(b, item->opt_none.value);
+    else ason_buf_appends(b, "null");
+    ason_buf_push(b, ',');
+    ason_buf_append(b, "\"vec_int\":[", 11);
+    for (size_t i = 0; i < item->vec_int.len; i++) {
+        if (i > 0) ason_buf_push(b, ',');
+        json_append_i64(b, item->vec_int.data[i]);
+    }
+    ason_buf_push(b, ']');
+    ason_buf_push(b, ',');
+    ason_buf_append(b, "\"vec_str\":[", 11);
+    for (size_t i = 0; i < item->vec_str.len; i++) {
+        if (i > 0) ason_buf_push(b, ',');
+        json_append_str(b, item->vec_str.data[i].data, item->vec_str.data[i].len);
+    }
+    ason_buf_append(b, "]}", 2);
+}
+
+static ason_buf_t json_serialize_alltypes(const BAllTypes* items, size_t n) {
+    ason_buf_t b = ason_buf_new(n * 256);
+    ason_buf_push(&b, '[');
+    for (size_t i = 0; i < n; i++) {
+        if (i > 0) ason_buf_push(&b, ',');
+        json_serialize_alltypes_item(&b, &items[i]);
+    }
+    ason_buf_push(&b, ']');
+    return b;
+}
+
 /* Mini JSON deserializer */
 static void json_skip_ws(const char** p, const char* e) {
     while (*p < e && (**p == ' ' || **p == '\n' || **p == '\t' || **p == '\r')) (*p)++;
@@ -235,11 +286,25 @@ static int64_t json_read_i64(const char** p, const char* e) {
     int64_t v = strtoll(*p, &endptr, 10);
     *p = endptr; return v;
 }
+static uint64_t json_read_u64(const char** p, const char* e) {
+    json_skip_ws(p, e);
+    char* endptr = NULL;
+    uint64_t v = strtoull(*p, &endptr, 10);
+    *p = endptr; return v;
+}
 static double json_read_f64(const char** p, const char* e) {
     json_skip_ws(p, e);
     char* endptr = NULL;
     double v = strtod(*p, &endptr);
     *p = endptr; return v;
+}
+static bool json_read_null(const char** p, const char* e) {
+    json_skip_ws(p, e);
+    if (*p + 4 <= e && memcmp(*p, "null", 4) == 0) {
+        *p += 4;
+        return true;
+    }
+    return false;
 }
 static bool json_read_bool(const char** p, const char* e) {
     json_skip_ws(p, e);
@@ -282,6 +347,81 @@ static BUser* json_deserialize_users(const char* data, size_t len, size_t* out_n
         if (cnt > 0) json_skip_comma(&p, e);
         if (cnt >= cap) { cap *= 2; arr = (BUser*)realloc(arr, cap * sizeof(BUser)); }
         arr[cnt++] = json_deserialize_user(&p, e);
+    }
+    *out_n = cnt;
+    return arr;
+}
+
+static ason_vec_i64 json_read_i64_array(const char** p, const char* e) {
+    ason_vec_i64 out = ason_vec_i64_new();
+    json_expect(p, e, '[');
+    while (1) {
+        json_skip_ws(p, e);
+        if (*p >= e || **p == ']') break;
+        if (out.len > 0) json_skip_comma(p, e);
+        ason_vec_i64_push(&out, json_read_i64(p, e));
+    }
+    json_expect(p, e, ']');
+    return out;
+}
+
+static ason_vec_str json_read_str_array(const char** p, const char* e) {
+    ason_vec_str out = ason_vec_str_new();
+    json_expect(p, e, '[');
+    while (1) {
+        json_skip_ws(p, e);
+        if (*p >= e || **p == ']') break;
+        if (out.len > 0) json_skip_comma(p, e);
+        ason_vec_str_push(&out, json_read_str(p, e));
+    }
+    json_expect(p, e, ']');
+    return out;
+}
+
+static BAllTypes json_deserialize_alltypes(const char** p, const char* e) {
+    BAllTypes item = {0};
+    json_expect(p, e, '{');
+    json_skip_key(p, e); item.b = json_read_bool(p, e); json_skip_comma(p, e);
+    json_skip_key(p, e); item.i8v = (int8_t)json_read_i64(p, e); json_skip_comma(p, e);
+    json_skip_key(p, e); item.i16v = (int16_t)json_read_i64(p, e); json_skip_comma(p, e);
+    json_skip_key(p, e); item.i32v = (int32_t)json_read_i64(p, e); json_skip_comma(p, e);
+    json_skip_key(p, e); item.i64v = json_read_i64(p, e); json_skip_comma(p, e);
+    json_skip_key(p, e); item.u8v = (uint8_t)json_read_u64(p, e); json_skip_comma(p, e);
+    json_skip_key(p, e); item.u16v = (uint16_t)json_read_u64(p, e); json_skip_comma(p, e);
+    json_skip_key(p, e); item.u32v = (uint32_t)json_read_u64(p, e); json_skip_comma(p, e);
+    json_skip_key(p, e); item.u64v = json_read_u64(p, e); json_skip_comma(p, e);
+    json_skip_key(p, e); item.f32v = (float)json_read_f64(p, e); json_skip_comma(p, e);
+    json_skip_key(p, e); item.f64v = json_read_f64(p, e); json_skip_comma(p, e);
+    json_skip_key(p, e); item.s = json_read_str(p, e); json_skip_comma(p, e);
+    json_skip_key(p, e);
+    if (json_read_null(p, e)) item.opt_some = (ason_opt_i64){false, 0};
+    else item.opt_some = (ason_opt_i64){true, json_read_i64(p, e)};
+    json_skip_comma(p, e);
+    json_skip_key(p, e);
+    if (json_read_null(p, e)) item.opt_none = (ason_opt_i64){false, 0};
+    else item.opt_none = (ason_opt_i64){true, json_read_i64(p, e)};
+    json_skip_comma(p, e);
+    json_skip_key(p, e); item.vec_int = json_read_i64_array(p, e); json_skip_comma(p, e);
+    json_skip_key(p, e); item.vec_str = json_read_str_array(p, e);
+    json_expect(p, e, '}');
+    return item;
+}
+
+static BAllTypes* json_deserialize_alltypes_vec(const char* data, size_t len, size_t* out_n) {
+    const char* p = data;
+    const char* e = data + len;
+    size_t cap = 32, cnt = 0;
+    BAllTypes* arr = (BAllTypes*)malloc(cap * sizeof(BAllTypes));
+    json_expect(&p, e, '[');
+    while (1) {
+        json_skip_ws(&p, e);
+        if (p >= e || *p == ']') break;
+        if (cnt > 0) json_skip_comma(&p, e);
+        if (cnt >= cap) {
+            cap *= 2;
+            arr = (BAllTypes*)realloc(arr, cap * sizeof(BAllTypes));
+        }
+        arr[cnt++] = json_deserialize_alltypes(&p, e);
     }
     *out_n = cnt;
     return arr;
@@ -724,98 +864,85 @@ static BenchResult bench_flat(size_t count, int iterations) {
 static BenchResult bench_all_types(size_t count, int iterations) {
     BAllTypes* items = generate_all_types(count);
     char name_buf[128];
-    snprintf(name_buf, 128, "All-types struct x %zu (16 fields, per-struct)", count);
+    snprintf(name_buf, 128, "All-types struct x %zu (16 fields, vec)", count);
 
-    /* JSON serialize (subset of fields) */
-    ason_buf_t json_buf = ason_buf_new(count * 256);
+    /* JSON serialize (full 16-field payload) */
+    ason_buf_t json_buf = {0};
     double t0 = now_ms();
     for (int iter = 0; iter < iterations; iter++) {
-        json_buf.len = 0;
-        ason_buf_push(&json_buf, '[');
-        for (size_t i = 0; i < count; i++) {
-            if (i > 0) ason_buf_push(&json_buf, ',');
-            ason_buf_push(&json_buf, '{');
-            JSON_KEY_BOOL(&json_buf, "b", items[i].b); ason_buf_push(&json_buf, ',');
-            JSON_KEY_I64(&json_buf, "i8v", items[i].i8v); ason_buf_push(&json_buf, ',');
-            JSON_KEY_I64(&json_buf, "i16v", items[i].i16v); ason_buf_push(&json_buf, ',');
-            JSON_KEY_I64(&json_buf, "i32v", items[i].i32v); ason_buf_push(&json_buf, ',');
-            JSON_KEY_I64(&json_buf, "i64v", items[i].i64v); ason_buf_push(&json_buf, ',');
-            JSON_KEY_I64(&json_buf, "u8v", items[i].u8v); ason_buf_push(&json_buf, ',');
-            JSON_KEY_I64(&json_buf, "u16v", items[i].u16v); ason_buf_push(&json_buf, ',');
-            JSON_KEY_I64(&json_buf, "u32v", items[i].u32v); ason_buf_push(&json_buf, ',');
-            JSON_KEY_I64(&json_buf, "u64v", (int64_t)items[i].u64v); ason_buf_push(&json_buf, ',');
-            JSON_KEY_F64(&json_buf, "f32v", items[i].f32v); ason_buf_push(&json_buf, ',');
-            JSON_KEY_F64(&json_buf, "f64v", items[i].f64v); ason_buf_push(&json_buf, ',');
-            JSON_KEY_STR(&json_buf, "s", items[i].s.data, items[i].s.len);
-            ason_buf_push(&json_buf, '}');
-        }
-        ason_buf_push(&json_buf, ']');
+        ason_buf_free(&json_buf);
+        json_buf = json_serialize_alltypes(items, count);
     }
     double json_ser = now_ms() - t0;
 
-    /* ASON serialize (per struct) */
-    ason_buf_t* ason_bufs = (ason_buf_t*)calloc(count, sizeof(ason_buf_t));
+    /* ASON serialize as one schema-driven vector payload */
+    ason_buf_t ason_buf = {0};
     t0 = now_ms();
     for (int iter = 0; iter < iterations; iter++) {
-        for (size_t i = 0; i < count; i++) {
-            ason_buf_free(&ason_bufs[i]);
-            ason_bufs[i] = ason_encode_BAllTypes(&items[i]);
-        }
+        ason_buf_free(&ason_buf);
+        ason_buf = ason_encode_vec_BAllTypes(items, count);
     }
     double ason_ser = now_ms() - t0;
 
-    /* JSON deserialize: estimate */
-    double json_de = json_ser * 1.5;
+    /* JSON deserialize */
+    t0 = now_ms();
+    for (int iter = 0; iter < iterations; iter++) {
+        size_t out_count = 0;
+        BAllTypes* out = json_deserialize_alltypes_vec(json_buf.data, json_buf.len, &out_count);
+        assert(out_count == count);
+        for (size_t i = 0; i < out_count; i++) {
+            free_balltypes(&out[i]);
+        }
+        free(out);
+    }
+    double json_de = now_ms() - t0;
 
     /* ASON deserialize */
     t0 = now_ms();
     for (int iter = 0; iter < iterations; iter++) {
-        for (size_t i = 0; i < count; i++) {
-            BAllTypes tmp = {0};
-            ason_err_t err = ason_decode_BAllTypes(ason_bufs[i].data, ason_bufs[i].len, &tmp);
-            assert(err == ASON_OK);
-            free_balltypes(&tmp);
+        BAllTypes* out = NULL;
+        size_t out_count = 0;
+        ason_err_t err = ason_decode_vec_BAllTypes(ason_buf.data, ason_buf.len, &out, &out_count);
+        assert(err == ASON_OK);
+        assert(out_count == count);
+        for (size_t i = 0; i < out_count; i++) {
+            free_balltypes(&out[i]);
         }
+        free(out);
     }
     double ason_de = now_ms() - t0;
 
-    /* ASON-BIN serialize */
-    ason_buf_t* ason_bin_bufs = (ason_buf_t*)calloc(count, sizeof(ason_buf_t));
+    /* ASON-BIN serialize as one vector payload */
+    ason_buf_t ason_bin_buf = {0};
     t0 = now_ms();
     for (int iter = 0; iter < iterations; iter++) {
-        for (size_t i = 0; i < count; i++) {
-            ason_buf_free(&ason_bin_bufs[i]);
-            ason_bin_bufs[i] = ason_encode_bin_BAllTypes(&items[i]);
-        }
+        ason_buf_free(&ason_bin_buf);
+        ason_bin_buf = ason_encode_bin_vec_BAllTypes(items, count);
     }
     double ason_bin_ser = now_ms() - t0;
 
     /* ASON-BIN deserialize */
     t0 = now_ms();
     for (int iter = 0; iter < iterations; iter++) {
-        for (size_t i = 0; i < count; i++) {
-            BAllTypes tmp = {0};
-            ason_err_t err = ason_decode_bin_BAllTypes(ason_bin_bufs[i].data, ason_bin_bufs[i].len, &tmp);
-            assert(err == ASON_OK);
-            free_balltypes(&tmp);
+        BAllTypes* out = NULL;
+        size_t out_count = 0;
+        ason_err_t err = ason_decode_bin_vec_BAllTypes(ason_bin_buf.data, ason_bin_buf.len, &out, &out_count);
+        assert(err == ASON_OK);
+        assert(out_count == count);
+        for (size_t i = 0; i < out_count; i++) {
+            free_balltypes(&out[i]);
         }
+        free(out);
     }
     double ason_bin_de = now_ms() - t0;
-
-    size_t ason_total = 0;
-    for (size_t i = 0; i < count; i++) ason_total += ason_bufs[i].len;
-    size_t ason_bin_total = 0;
-    for (size_t i = 0; i < count; i++) ason_bin_total += ason_bin_bufs[i].len;
 
     BenchResult res = {strdup(name_buf),
         json_ser, ason_ser, ason_bin_ser,
         json_de,  ason_de,  ason_bin_de,
-        json_buf.len, ason_total, ason_bin_total};
+        json_buf.len, ason_buf.len, ason_bin_buf.len};
     ason_buf_free(&json_buf);
-    for (size_t i = 0; i < count; i++) ason_buf_free(&ason_bufs[i]);
-    for (size_t i = 0; i < count; i++) ason_buf_free(&ason_bin_bufs[i]);
-    free(ason_bufs);
-    free(ason_bin_bufs);
+    ason_buf_free(&ason_buf);
+    ason_buf_free(&ason_bin_buf);
     for (size_t i = 0; i < count; i++) free_balltypes(&items[i]);
     free(items);
     return res;
@@ -840,14 +967,12 @@ static BenchResult bench_deep(size_t count, int iterations) {
     }
     double json_ser = now_ms() - t0;
 
-    /* ASON serialize (per company) */
-    ason_buf_t* ason_bufs = (ason_buf_t*)calloc(count, sizeof(ason_buf_t));
+    /* ASON serialize as one schema-driven vector payload */
+    ason_buf_t ason_buf = {0};
     t0 = now_ms();
     for (int iter = 0; iter < iterations; iter++) {
-        for (size_t i = 0; i < count; i++) {
-            ason_buf_free(&ason_bufs[i]);
-            ason_bufs[i] = ason_encode_BCompany(&companies[i]);
-        }
+        ason_buf_free(&ason_buf);
+        ason_buf = ason_encode_vec_BCompany(companies, count);
     }
     double ason_ser = now_ms() - t0;
 
@@ -865,61 +990,63 @@ static BenchResult bench_deep(size_t count, int iterations) {
     /* ASON deserialize */
     t0 = now_ms();
     for (int iter = 0; iter < iterations; iter++) {
-        for (size_t i = 0; i < count; i++) {
-            BCompany tmp = {0};
-            ason_err_t err = ason_decode_BCompany(ason_bufs[i].data, ason_bufs[i].len, &tmp);
-            assert(err == ASON_OK);
-            free_bcompany(&tmp);
+        BCompany* out = NULL;
+        size_t out_count = 0;
+        ason_err_t err = ason_decode_vec_BCompany(ason_buf.data, ason_buf.len, &out, &out_count);
+        assert(err == ASON_OK);
+        assert(out_count == count);
+        for (size_t i = 0; i < out_count; i++) {
+            free_bcompany(&out[i]);
         }
+        free(out);
     }
     double ason_de = now_ms() - t0;
 
-    /* ASON-BIN serialize */
-    ason_buf_t* ason_bin_bufs = (ason_buf_t*)calloc(count, sizeof(ason_buf_t));
+    /* ASON-BIN serialize as one vector payload */
+    ason_buf_t ason_bin_buf = {0};
     t0 = now_ms();
     for (int iter = 0; iter < iterations; iter++) {
-        for (size_t i = 0; i < count; i++) {
-            ason_buf_free(&ason_bin_bufs[i]);
-            ason_bin_bufs[i] = ason_encode_bin_BCompany(&companies[i]);
-        }
+        ason_buf_free(&ason_bin_buf);
+        ason_bin_buf = ason_encode_bin_vec_BCompany(companies, count);
     }
     double ason_bin_ser = now_ms() - t0;
 
     /* ASON-BIN deserialize */
     t0 = now_ms();
     for (int iter = 0; iter < iterations; iter++) {
-        for (size_t i = 0; i < count; i++) {
-            BCompany tmp = {0};
-            ason_err_t err = ason_decode_bin_BCompany(ason_bin_bufs[i].data, ason_bin_bufs[i].len, &tmp);
-            assert(err == ASON_OK);
-            free_bcompany(&tmp);
+        BCompany* out = NULL;
+        size_t out_count = 0;
+        ason_err_t err = ason_decode_bin_vec_BCompany(ason_bin_buf.data, ason_bin_buf.len, &out, &out_count);
+        assert(err == ASON_OK);
+        assert(out_count == count);
+        for (size_t i = 0; i < out_count; i++) {
+            free_bcompany(&out[i]);
         }
+        free(out);
     }
     double ason_bin_de = now_ms() - t0;
 
     /* Verify */
-    for (size_t i = 0; i < count; i++) {
-        BCompany tmp = {0};
-        ason_err_t err = ason_decode_BCompany(ason_bufs[i].data, ason_bufs[i].len, &tmp);
+    {
+        BCompany* out = NULL;
+        size_t out_count = 0;
+        ason_err_t err = ason_decode_vec_BCompany(ason_buf.data, ason_buf.len, &out, &out_count);
         assert(err == ASON_OK);
-        assert(strcmp(tmp.name.data, companies[i].name.data) == 0);
-        free_bcompany(&tmp);
+        assert(out_count == count);
+        for (size_t i = 0; i < out_count; i++) {
+            assert(strcmp(out[i].name.data, companies[i].name.data) == 0);
+            free_bcompany(&out[i]);
+        }
+        free(out);
     }
-
-    size_t ason_total = 0;
-    for (size_t i = 0; i < count; i++) ason_total += ason_bufs[i].len;
-    size_t ason_bin_total = 0;
-    for (size_t i = 0; i < count; i++) ason_bin_total += ason_bin_bufs[i].len;
 
     BenchResult res = {strdup(name_buf),
         json_ser, ason_ser, ason_bin_ser,
         json_de,  ason_de,  ason_bin_de,
-        json_buf.len, ason_total, ason_bin_total};
+        json_buf.len, ason_buf.len, ason_bin_buf.len};
     ason_buf_free(&json_buf);
-    for (size_t i = 0; i < count; i++) ason_buf_free(&ason_bufs[i]);
-    for (size_t i = 0; i < count; i++) ason_buf_free(&ason_bin_bufs[i]);
-    free(ason_bufs);
-    free(ason_bin_bufs);
+    ason_buf_free(&ason_buf);
+    ason_buf_free(&ason_bin_buf);
     for (size_t i = 0; i < count; i++) free_bcompany(&companies[i]);
     free(companies);
     return res;

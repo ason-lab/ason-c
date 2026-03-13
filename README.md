@@ -13,13 +13,13 @@ ASON keeps the schema once and stores each row as a compact tuple:
 
 ```json
 [
-  {"id": 1, "name": "Alice", "active": true},
-  {"id": 2, "name": "Bob", "active": false}
+  { "id": 1, "name": "Alice", "active": true },
+  { "id": 2, "name": "Bob", "active": false }
 ]
 ```
 
 ```text
-[{id:int,name:str,active:bool}]:(1,Alice,true),(2,Bob,false)
+[{id@int,name@str,active@bool}]:(1,Alice,true),(2,Bob,false)
 ```
 
 That usually means fewer tokens, smaller payloads, and faster parsing than repeated-object JSON.
@@ -30,7 +30,8 @@ That usually means fewer tokens, smaller payloads, and faster parsing than repea
 - SIMD-aware parser with scalar fallback
 - Zero-copy-friendly text decoding
 - Schema-driven text format and compact binary format
-- Support for strings, numbers, bools, optional fields, vectors, maps, nested structs, and struct arrays
+- Support for strings, numbers, bools, optional fields, arrays, nested structs, and struct arrays
+- Entry-list style data is modeled with ordinary structs plus `ASON_FIELD_VEC_STRUCT(...)`
 
 ## Quick Start
 
@@ -61,7 +62,7 @@ ason_buf_t text = ason_encode_User(&user);
 // {id,name,active}:(1,Alice,true)
 
 ason_buf_t typed = ason_encode_typed_User(&user);
-// {id:int,name:str,active:bool}:(1,Alice,true)
+// {id@int,name@str,active@bool}:(1,Alice,true)
 
 User decoded = {0};
 ason_err_t err = ason_decode_User(text.data, text.len, &decoded);
@@ -102,14 +103,14 @@ assert(err == ASON_OK);
 
 ## Current API
 
-| Function family | Purpose |
-| --- | --- |
-| `ason_encode_T` / `ason_encode_typed_T` | Encode one struct to text |
-| `ason_decode_T` | Decode one struct from text |
-| `ason_encode_vec_T` / `ason_encode_typed_vec_T` | Encode struct arrays to text |
-| `ason_decode_vec_T` | Decode struct arrays from text |
-| `ason_encode_bin_T` / `ason_encode_bin_vec_T` | Encode to binary |
-| `ason_decode_bin_T` / `ason_decode_bin_vec_T` | Decode from binary |
+| Function family                                 | Purpose                        |
+| ----------------------------------------------- | ------------------------------ |
+| `ason_encode_T` / `ason_encode_typed_T`         | Encode one struct to text      |
+| `ason_decode_T`                                 | Decode one struct from text    |
+| `ason_encode_vec_T` / `ason_encode_typed_vec_T` | Encode struct arrays to text   |
+| `ason_decode_vec_T`                             | Decode struct arrays from text |
+| `ason_encode_bin_T` / `ason_encode_bin_vec_T`   | Encode to binary               |
+| `ason_decode_bin_T` / `ason_decode_bin_vec_T`   | Decode from binary             |
 
 `T` is generated from your `ASON_FIELDS(...)` declaration.
 
@@ -140,6 +141,12 @@ Headline numbers:
 - Binary path was the fastest path in the benchmark: `6.31x` faster than JSON on flat 1,000-record serialization and `7.52x` faster on deserialization
 
 For deeply nested 100-record company payloads, ASON text decoding was `3.10x` faster than JSON and ASON text size was `61%` smaller.
+
+## Notes
+
+- Scalar type annotations such as `@int` and `@str` are optional metadata.
+- Structural markers for complex fields are not optional: nested objects and arrays must keep `@{...}` or `@[...]` in the schema.
+- The C implementation is now aligned with the current spec and no longer supports the older dedicated map API.
 
 ## Contributors
 

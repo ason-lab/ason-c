@@ -61,7 +61,7 @@ int main(void) {
     /* 3. Deserialize from ASON */
     printf("3. Deserialize single struct:\n");
     {
-        const char* input = "{id:int,name:str,active:bool}:(1,Alice,true)";
+        const char* input = "{id@int,name@str,active@bool}:(1,Alice,true)";
         User u2 = {0};
         ason_err_t err = ason_decode_User(input, strlen(input), &u2);
         assert(err == ASON_OK);
@@ -87,7 +87,7 @@ int main(void) {
     /* 5. Deserialize vec */
     printf("5. Deserialize vec:\n");
     {
-        const char* input = "[{id:int,name:str,active:bool}]:(1,Alice,true),(2,Bob,false),(3,\"Carol Smith\",true)";
+        const char* input = "[{id@int,name@str,active@bool}]:(1,Alice,true),(2,Bob,false),(3,\"Carol Smith\",true)";
         User* users = NULL;
         size_t count = 0;
         ason_err_t err = ason_decode_vec_User(input, strlen(input), &users, &count);
@@ -176,7 +176,7 @@ int main(void) {
     /* 9. Array fields */
     printf("9. Array fields:\n");
     {
-        const char* input = "{name,tags}:(Alice,[rust,go,python])";
+        const char* input = "{name,tags@[]}:(Alice,[rust,go,python])";
         Tagged t = {0};
         ason_err_t err = ason_decode_Tagged(input, strlen(input), &t);
         assert(err == ASON_OK);

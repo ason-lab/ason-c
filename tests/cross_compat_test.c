@@ -42,7 +42,7 @@ ASON_VEC_STRUCT_DEFINE(DstMini)
 static void free_srcfull(SrcFull* s) { ason_string_free(&s->name); }
 static void free_dstmini(DstMini* d) { if (d->name.data) ason_string_free(&d->name); }
 
-/* Dim 3: skip trailing arrays+map */
+/* Dim 3: skip trailing arrays+entry-list */
 typedef struct { int64_t id; ason_string_t name; ason_vec_str tags; ason_vec_i64 scores; } SrcRich;
 ASON_FIELDS(SrcRich, 4,
     ASON_FIELD(SrcRich, id, "id", i64),
@@ -313,24 +313,30 @@ ASON_FIELDS(DstNegThin, 2,
 
 static void free_srcneg(SrcNeg* s) { ason_string_free(&s->d); }
 
-/* Dim 16: map */
-typedef struct { int64_t id; ason_string_t name; ason_map_si meta; } SrcMap;
-ASON_FIELDS(SrcMap, 3,
-    ASON_FIELD(SrcMap, id, "id", i64),
-    ASON_FIELD(SrcMap, name, "name", str),
-    ASON_FIELD(SrcMap, meta, "meta", map_si))
+/* Dim 16: entry list */
+typedef struct { ason_string_t key; int64_t value; } SrcMetaEntry;
+ASON_FIELDS(SrcMetaEntry, 2,
+    ASON_FIELD(SrcMetaEntry, key, "key", str),
+    ASON_FIELD(SrcMetaEntry, value, "value", i64))
+ASON_VEC_STRUCT_DEFINE(SrcMetaEntry)
 
-typedef struct { int64_t id; ason_string_t name; } DstNoMap;
-ASON_FIELDS(DstNoMap, 2,
-    ASON_FIELD(DstNoMap, id, "id", i64),
-    ASON_FIELD(DstNoMap, name, "name", str))
+typedef struct { int64_t id; ason_string_t name; ason_vec_SrcMetaEntry meta; } SrcEntries;
+ASON_FIELDS(SrcEntries, 3,
+    ASON_FIELD(SrcEntries, id, "id", i64),
+    ASON_FIELD(SrcEntries, name, "name", str),
+    ASON_FIELD_VEC_STRUCT(SrcEntries, meta, "meta", SrcMetaEntry))
 
-static void free_srcmap(SrcMap* s) {
+typedef struct { int64_t id; ason_string_t name; } DstNoEntries;
+ASON_FIELDS(DstNoEntries, 2,
+    ASON_FIELD(DstNoEntries, id, "id", i64),
+    ASON_FIELD(DstNoEntries, name, "name", str))
+
+static void free_srcentries(SrcEntries* s) {
     ason_string_free(&s->name);
     for (size_t i = 0; i < s->meta.len; i++) ason_string_free(&s->meta.data[i].key);
-    ason_map_si_free(&s->meta);
+    ason_vec_SrcMetaEntry_free(&s->meta);
 }
-static void free_dstnomap(DstNoMap* d) { ason_string_free(&d->name); }
+static void free_dstnoentries(DstNoEntries* d) { ason_string_free(&d->name); }
 
 /* Dim 20: bools */
 typedef struct { int64_t id; bool a; bool b; bool c; } SrcBools;
@@ -597,8 +603,8 @@ void test_cross_trailing_single(void) {
     PASS();
 }
 
-void test_cross_skip_array_map(void) {
-    TEST(skip_trailing_array_map);
+void test_cross_skip_array_fields(void) {
+    TEST(skip_trailing_array_fields);
     SrcRich src = {1, ason_string_from("Alice"), {0}, {0}};
     /* manually build tags */
     ason_vec_str_push(&src.tags, ason_string_from("go"));
@@ -807,18 +813,16 @@ void test_cross_empty_string(void) {
     PASS();
 }
 
-void test_cross_skip_map(void) {
-    TEST(skip_map);
-    SrcMap src = {1, ason_string_from("Alice"), {0}};
-    ason_map_si_entry_t e1 = {ason_string_from("age"), 30};
-    ason_map_si_entry_t e2 = {ason_string_from("score"), 95};
-    ason_map_si_push(&src.meta, e1);
-    ason_map_si_push(&src.meta, e2);
-    ason_buf_t buf = ason_encode_SrcMap(&src);
-    DstNoMap dst = {0};
-    ASSERT_OK(ason_decode_DstNoMap(buf.data, buf.len, &dst));
+void test_cross_skip_entry_list(void) {
+    TEST(skip_entry_list);
+    SrcEntries src = {1, ason_string_from("Alice"), {0}};
+    ason_vec_SrcMetaEntry_push(&src.meta, (SrcMetaEntry){ason_string_from("age"), 30});
+    ason_vec_SrcMetaEntry_push(&src.meta, (SrcMetaEntry){ason_string_from("score"), 95});
+    ason_buf_t buf = ason_encode_SrcEntries(&src);
+    DstNoEntries dst = {0};
+    ASSERT_OK(ason_decode_DstNoEntries(buf.data, buf.len, &dst));
     ASSERT_EQ_I(dst.id, 1); ASSERT_EQ_S(dst.name.data, "Alice");
-    ason_buf_free(&buf); free_srcmap(&src); free_dstnomap(&dst);
+    ason_buf_free(&buf); free_srcentries(&src); free_dstnoentries(&dst);
     PASS();
 }
 
@@ -1104,7 +1108,7 @@ void test_cross_zero_value(void) {
 
 void test_matrix_partial_overlap_typed(void) {
     TEST(matrix_partial_overlap_typed);
-    const char* input = "{id:int,name:str,score:float,active:bool}:(42,Alice,9.5,true)";
+    const char* input = "{id@int,name@str,score@float,active@bool}:(42,Alice,9.5,true)";
     MatrixPart dst = {0};
     ASSERT_OK(ason_decode_MatrixPart(input, strlen(input), &dst));
     ASSERT_EQ_I(dst.id, 42);
@@ -1124,7 +1128,7 @@ void test_matrix_partial_overlap_untyped(void) {
 
 void test_matrix_no_overlap_typed(void) {
     TEST(matrix_no_overlap_typed);
-    const char* input = "{id:int,name:str}:(42,Alice)";
+    const char* input = "{id@int,name@str}:(42,Alice)";
     MatrixNoOverlap dst = {0};
     ASSERT_OK(ason_decode_MatrixNoOverlap(input, strlen(input), &dst));
     ASSERT_EQ_I(dst.foo, 0);
@@ -1146,7 +1150,7 @@ void test_matrix_no_overlap_untyped(void) {
 
 void test_matrix_nested_optional_typed(void) {
     TEST(matrix_nested_optional_typed);
-    const char* input = "[{id:int,profile:{name:str,nick:str?,score:float?},active:bool}]:(1,(Alice,ally,9.5),true),(2,(Bob,,),false)";
+    const char* input = "[{id@int,profile@{name@str,nick@str,score@float},active@bool}]:(1,(Alice,ally,9.5),true),(2,(Bob,,),false)";
     MatrixUserNestedOpt* dst = NULL; size_t n = 0;
     ASSERT_OK(ason_decode_vec_MatrixUserNestedOpt(input, strlen(input), &dst, &n));
     ASSERT_EQ_U(n, 2u);
@@ -1164,7 +1168,7 @@ void test_matrix_nested_optional_typed(void) {
 
 void test_matrix_nested_optional_untyped(void) {
     TEST(matrix_nested_optional_untyped);
-    const char* input = "[{id,profile:{name,nick,score},active}]:(1,(Alice,ally,9.5),true),(2,(Bob,,),false)";
+    const char* input = "[{id,profile@{name,nick,score},active}]:(1,(Alice,ally,9.5),true),(2,(Bob,,),false)";
     MatrixUserNestedOpt* dst = NULL; size_t n = 0;
     ASSERT_OK(ason_decode_vec_MatrixUserNestedOpt(input, strlen(input), &dst, &n));
     ASSERT_EQ_U(n, 2u);
@@ -1181,7 +1185,7 @@ int main(void) {
 
     test_cross_trailing_vec();
     test_cross_trailing_single();
-    test_cross_skip_array_map();
+    test_cross_skip_array_fields();
     test_cross_nested_fewer();
     test_cross_vec_nested_skip();
     test_cross_deep_3();
@@ -1195,7 +1199,7 @@ int main(void) {
     test_cross_float_roundtrip();
     test_cross_negative();
     test_cross_empty_string();
-    test_cross_skip_map();
+    test_cross_skip_entry_list();
     test_cross_typed_vec();
     test_cross_typed_single();
     test_cross_nested_vec_trailing();
