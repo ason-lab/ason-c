@@ -763,17 +763,40 @@ typedef struct {
     size_t json_bytes, ason_bytes, ason_bin_bytes;
 } BenchResult;
 
+static void format_ratio(char* out, size_t out_sz, double ratio) {
+    long tenths = (long)(ratio * 10.0 + 0.5);
+    if (tenths % 10 == 0) snprintf(out, out_sz, "%ldx", tenths / 10);
+    else snprintf(out, out_sz, "%.1fx", tenths / 10.0);
+}
+
+static void format_percent(char* out, size_t out_sz, double pct_value) {
+    long pct = (long)(pct_value + 0.5);
+    snprintf(out, out_sz, "%ld%%", pct);
+}
+
 static void print_result(const BenchResult* r) {
-    double ser_ratio = r->json_ser_ms / r->ason_bin_ser_ms;
-    double de_ratio  = r->json_de_ms  / r->ason_bin_de_ms;
-    double bin_saving = (1.0 - (double)r->ason_bin_bytes / (double)r->json_bytes) * 100.0;
+    double ason_ser_ratio = r->json_ser_ms / r->ason_ser_ms;
+    double bin_ser_ratio  = r->json_ser_ms / r->ason_bin_ser_ms;
+    double ason_de_ratio  = r->json_de_ms  / r->ason_de_ms;
+    double bin_de_ratio   = r->json_de_ms  / r->ason_bin_de_ms;
+    double ason_percent   = ((double)r->ason_bytes / (double)r->json_bytes) * 100.0;
+    double bin_percent    = ((double)r->ason_bin_bytes / (double)r->json_bytes) * 100.0;
+    char ason_ser_ratio_buf[16], bin_ser_ratio_buf[16];
+    char ason_de_ratio_buf[16], bin_de_ratio_buf[16];
+    char ason_percent_buf[16], bin_percent_buf[16];
+    format_ratio(ason_ser_ratio_buf, sizeof(ason_ser_ratio_buf), ason_ser_ratio);
+    format_ratio(bin_ser_ratio_buf, sizeof(bin_ser_ratio_buf), bin_ser_ratio);
+    format_ratio(ason_de_ratio_buf, sizeof(ason_de_ratio_buf), ason_de_ratio);
+    format_ratio(bin_de_ratio_buf, sizeof(bin_de_ratio_buf), bin_de_ratio);
+    format_percent(ason_percent_buf, sizeof(ason_percent_buf), ason_percent);
+    format_percent(bin_percent_buf, sizeof(bin_percent_buf), bin_percent);
     printf("  %s\n", r->name);
-    printf("    Serialize:   JSON %8.2fms | ASON %8.2fms | BIN %8.2fms | ratio %.2fx\n",
-           r->json_ser_ms, r->ason_ser_ms, r->ason_bin_ser_ms, ser_ratio);
-    printf("    Deserialize: JSON %8.2fms | ASON %8.2fms | BIN %8.2fms | ratio %.2fx\n",
-           r->json_de_ms, r->ason_de_ms, r->ason_bin_de_ms, de_ratio);
-    printf("    Size:        JSON %8zu B | ASON %8zu B | BIN %8zu B | saving %.0f%%\n",
-           r->json_bytes, r->ason_bytes, r->ason_bin_bytes, bin_saving);
+    printf("    Serialize:   JSON %8.2fms | ASON %8.2fms (%s) | BIN %8.2fms (%s)\n",
+           r->json_ser_ms, r->ason_ser_ms, ason_ser_ratio_buf, r->ason_bin_ser_ms, bin_ser_ratio_buf);
+    printf("    Deserialize: JSON %8.2fms | ASON %8.2fms (%s) | BIN %8.2fms (%s)\n",
+           r->json_de_ms, r->ason_de_ms, ason_de_ratio_buf, r->ason_bin_de_ms, bin_de_ratio_buf);
+    printf("    Size:        JSON %8zu B | ASON %8zu B (%s) | BIN %8zu B (%s)\n",
+           r->json_bytes, r->ason_bytes, ason_percent_buf, r->ason_bin_bytes, bin_percent_buf);
 }
 
 /* ===========================================================================
