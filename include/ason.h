@@ -305,8 +305,9 @@ ason_inline bool ason_needs_quoting(const char* s, size_t len) {
     if ((s[0] >= '0' && s[0] <= '9') || s[0] == '-' || s[0] == '+') return true;
 
 #if defined(ASON_NEON)
-    /* SIMD: check for structural chars: ,()[]{}:"\\<ctrl> */
+    /* SIMD: check for structural chars: ,@()[]{}:"\\<ctrl> */
     uint8x16_t q_comma = vdupq_n_u8(',');
+    uint8x16_t q_at    = vdupq_n_u8('@');
     uint8x16_t q_lp    = vdupq_n_u8('(');
     uint8x16_t q_rp    = vdupq_n_u8(')');
     uint8x16_t q_lb    = vdupq_n_u8('[');
@@ -322,7 +323,7 @@ ason_inline bool ason_needs_quoting(const char* s, size_t len) {
     while (p + 16 <= e) {
         uint8x16_t chunk = vld1q_u8((const uint8_t*)p);
         uint8x16_t m = vorrq_u8(
-            vorrq_u8(vorrq_u8(vceqq_u8(chunk, q_comma), vceqq_u8(chunk, q_lp)),
+            vorrq_u8(vorrq_u8(vorrq_u8(vceqq_u8(chunk, q_comma), vceqq_u8(chunk, q_at)), vceqq_u8(chunk, q_lp)),
                      vorrq_u8(vceqq_u8(chunk, q_rp), vceqq_u8(chunk, q_lb))),
             vorrq_u8(vorrq_u8(vceqq_u8(chunk, q_rb), vceqq_u8(chunk, q_lc)),
                      vorrq_u8(vorrq_u8(vceqq_u8(chunk, q_rc), vceqq_u8(chunk, q_dq)),
@@ -333,13 +334,14 @@ ason_inline bool ason_needs_quoting(const char* s, size_t len) {
     }
     while (p < e) {
         char c = *p;
-        if (c == ',' || c == '(' || c == ')' || c == '[' || c == ']' ||
+        if (c == ',' || c == '@' || c == '(' || c == ')' || c == '[' || c == ']' ||
             c == '{' || c == '}' || c == '"' || c == ':' || c == '\\' ||
             (uint8_t)c < 0x20) return true;
         p++;
     }
 #elif defined(ASON_SSE2)
     __m128i q_comma = _mm_set1_epi8(',');
+    __m128i q_at    = _mm_set1_epi8('@');
     __m128i q_lp    = _mm_set1_epi8('(');
     __m128i q_rp    = _mm_set1_epi8(')');
     __m128i q_lb    = _mm_set1_epi8('[');
@@ -355,7 +357,7 @@ ason_inline bool ason_needs_quoting(const char* s, size_t len) {
     while (p + 16 <= e) {
         __m128i chunk = _mm_loadu_si128((const __m128i*)p);
         __m128i m = _mm_or_si128(
-            _mm_or_si128(_mm_or_si128(_mm_cmpeq_epi8(chunk, q_comma), _mm_cmpeq_epi8(chunk, q_lp)),
+            _mm_or_si128(_mm_or_si128(_mm_or_si128(_mm_cmpeq_epi8(chunk, q_comma), _mm_cmpeq_epi8(chunk, q_at)), _mm_cmpeq_epi8(chunk, q_lp)),
                          _mm_or_si128(_mm_cmpeq_epi8(chunk, q_rp), _mm_cmpeq_epi8(chunk, q_lb))),
             _mm_or_si128(_mm_or_si128(_mm_cmpeq_epi8(chunk, q_rb), _mm_cmpeq_epi8(chunk, q_lc)),
                          _mm_or_si128(_mm_or_si128(_mm_cmpeq_epi8(chunk, q_rc), _mm_cmpeq_epi8(chunk, q_dq)),
@@ -366,7 +368,7 @@ ason_inline bool ason_needs_quoting(const char* s, size_t len) {
     }
     while (p < e) {
         char c = *p;
-        if (c == ',' || c == '(' || c == ')' || c == '[' || c == ']' ||
+        if (c == ',' || c == '@' || c == '(' || c == ')' || c == '[' || c == ']' ||
             c == '{' || c == '}' || c == '"' || c == ':' || c == '\\' ||
             (uint8_t)c < 0x20) return true;
         p++;
@@ -376,7 +378,7 @@ ason_inline bool ason_needs_quoting(const char* s, size_t len) {
     const char* e = s + len;
     while (p < e) {
         char c = *p;
-        if (c == ',' || c == '(' || c == ')' || c == '[' || c == ']' ||
+        if (c == ',' || c == '@' || c == '(' || c == ')' || c == '[' || c == ']' ||
             c == '{' || c == '}' || c == '"' || c == ':' || c == '\\' ||
             (uint8_t)c < 0x20) return true;
         p++;

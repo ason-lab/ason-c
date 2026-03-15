@@ -439,6 +439,15 @@ void test_string_needs_quoting(void) {
     ason_buf_t buf3 = ason_encode_TStringOnly(&s3);
     ASSERT_TRUE(strstr(buf3.data, "\"12345\"") != NULL);
     ason_buf_free(&buf3); ason_string_free(&s3.val);
+
+    TStringOnly s4 = {ason_string_from("@Alice")};
+    ason_buf_t buf4 = ason_encode_TStringOnly(&s4);
+    ASSERT_TRUE(strstr(buf4.data, "\"@Alice\"") != NULL);
+    TStringOnly s4b = {0};
+    ason_err_t err4 = ason_decode_TStringOnly(buf4.data, buf4.len, &s4b);
+    ASSERT_TRUE(err4 == ASON_OK);
+    ASSERT_EQ_S(s4b.val.data, "@Alice");
+    ason_buf_free(&buf4); ason_string_free(&s4.val); ason_string_free(&s4b.val);
     PASS();
 }
 
