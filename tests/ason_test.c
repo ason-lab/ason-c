@@ -637,15 +637,15 @@ void test_typed_schema_parse(void) {
     PASS();
 }
 
-void test_reject_schema_type_aliases(void) {
-    TEST(reject_schema_type_aliases);
+void test_reject_invalid_schema_types(void) {
+    TEST(reject_invalid_schema_types);
     TSimple r = {0};
     const char* cases[] = {
-        "{id@integer,name@str,active@bool}:(42,Hello,false)",
-        "{id@int,name@string,active@bool}:(42,Hello,false)",
-        "{id@int,name@str,active@boolean}:(42,Hello,false)",
-        "{items@[string]}:([Alice])",
-        "{profile@{name@string}}:((Alice))",
+        "{id@numx,name@str,active@bool}:(42,Hello,false)",
+        "{id@int,name@textx,active@bool}:(42,Hello,false)",
+        "{id@int,name@str,active@flagx}:(42,Hello,false)",
+        "{items@[textx]}:([Alice])",
+        "{profile@{name@textx}}:((Alice))",
     };
     for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
         ason_err_t err = ason_decode_TSimple(cases[i], strlen(cases[i]), &r);
@@ -1138,7 +1138,7 @@ int main(void) {
     test_whitespace();
     test_multiline();
     test_typed_schema_parse();
-    test_reject_schema_type_aliases();
+    test_reject_invalid_schema_types();
     test_schema_field_mismatch();
 
     printf("\n--- Edge cases ---\n");
