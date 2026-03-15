@@ -118,6 +118,15 @@ ASON_FIELDS(TNestedVec, 1, ASON_FIELD(TNestedVec, matrix, "matrix", vec_vec_i64)
 typedef struct { ason_string_t val; } TStringOnly;
 ASON_FIELDS(TStringOnly, 1, ASON_FIELD(TStringOnly, val, "val", str))
 
+typedef struct { int64_t id_uuid; ason_string_t numeric; bool special; } TQuotedSchema;
+ASON_FIELDS(TQuotedSchema, 3,
+    ASON_FIELD(TQuotedSchema, id_uuid, "id uuid", i64),
+    ASON_FIELD(TQuotedSchema, numeric, "65", str),
+    ASON_FIELD(TQuotedSchema, special, "{}[]@\"", bool))
+ASON_FIELDS_BIN(TQuotedSchema, 3)
+
+static void free_tquoted(TQuotedSchema* q) { ason_string_free(&q->numeric); }
+
 typedef struct { ason_vec_bool flags; } TWithBoolVec;
 ASON_FIELDS(TWithBoolVec, 1, ASON_FIELD(TWithBoolVec, flags, "flags", vec_bool))
 
@@ -221,6 +230,64 @@ void test_optional_absent(void) {
     ASSERT_FALSE(r.label.has_value);
     ASSERT_FALSE(r.count.has_value);
     free_twithoptional(&r);
+    PASS();
+}
+
+void test_quoted_schema_field_names(void) {
+    TEST(quoted_schema_field_names);
+    TQuotedSchema s = {1, ason_string_from("Alice"), true};
+    ason_buf_t untyped = ason_encode_TQuotedSchema(&s);
+    ASSERT_TRUE(strstr(untyped.data, "\"id uuid\"") != NULL);
+    ASSERT_TRUE(strstr(untyped.data, "\"65\"") != NULL);
+    ASSERT_TRUE(strstr(untyped.data, "\"{}[]@\\\"\"") != NULL);
+    TQuotedSchema out0 = {0};
+    ason_err_t err = ason_decode_TQuotedSchema(untyped.data, untyped.len, &out0);
+    ASSERT_TRUE(err == ASON_OK);
+    ASSERT_EQ_I(out0.id_uuid, 1);
+    ASSERT_EQ_S(out0.numeric.data, "Alice");
+    ASSERT_TRUE(out0.special);
+    ason_buf_t buf = ason_encode_typed_TQuotedSchema(&s);
+    ASSERT_TRUE(strstr(buf.data, "\"id uuid\"@int") != NULL);
+    ASSERT_TRUE(strstr(buf.data, "\"65\"@str") != NULL);
+    ASSERT_TRUE(strstr(buf.data, "\"{}[]@\\\"\"@bool") != NULL);
+    TQuotedSchema out = {0};
+    err = ason_decode_TQuotedSchema(buf.data, buf.len, &out);
+    ASSERT_TRUE(err == ASON_OK);
+    ASSERT_EQ_I(out.id_uuid, 1);
+    ASSERT_EQ_S(out.numeric.data, "Alice");
+    ASSERT_TRUE(out.special);
+    ason_buf_t pretty_untyped = ason_encode_pretty_TQuotedSchema(&s);
+    TQuotedSchema out_pretty_untyped = {0};
+    err = ason_decode_TQuotedSchema(pretty_untyped.data, pretty_untyped.len, &out_pretty_untyped);
+    ASSERT_TRUE(err == ASON_OK);
+    ASSERT_EQ_I(out_pretty_untyped.id_uuid, 1);
+    ASSERT_EQ_S(out_pretty_untyped.numeric.data, "Alice");
+    ASSERT_TRUE(out_pretty_untyped.special);
+    ason_buf_t pretty = ason_encode_pretty_typed_TQuotedSchema(&s);
+    TQuotedSchema out2 = {0};
+    err = ason_decode_TQuotedSchema(pretty.data, pretty.len, &out2);
+    ASSERT_TRUE(err == ASON_OK);
+    ASSERT_EQ_I(out2.id_uuid, 1);
+    ASSERT_EQ_S(out2.numeric.data, "Alice");
+    ASSERT_TRUE(out2.special);
+    ason_buf_t bin = ason_encode_bin_TQuotedSchema(&s);
+    TQuotedSchema out3 = {0};
+    err = ason_decode_bin_TQuotedSchema(bin.data, bin.len, &out3);
+    ASSERT_TRUE(err == ASON_OK);
+    ASSERT_EQ_I(out3.id_uuid, 1);
+    ASSERT_EQ_S(out3.numeric.data, "Alice");
+    ASSERT_TRUE(out3.special);
+    ason_buf_free(&untyped);
+    ason_buf_free(&buf);
+    ason_buf_free(&pretty_untyped);
+    ason_buf_free(&pretty);
+    ason_buf_free(&bin);
+    free_tquoted(&s);
+    free_tquoted(&out0);
+    free_tquoted(&out);
+    free_tquoted(&out_pretty_untyped);
+    free_tquoted(&out2);
+    free_tquoted(&out3);
     PASS();
 }
 
@@ -1031,6 +1098,7 @@ int main(void) {
     test_string_with_spaces();
     test_leading_trailing_space_quoting();
     test_backslash_escape();
+    test_quoted_schema_field_names();
 
     printf("\n--- Numbers ---\n");
     test_floats();

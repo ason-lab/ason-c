@@ -559,12 +559,53 @@ static bool ason_type_is_array(ason_type_t type) {
  * Generic struct dump/load via descriptor
  * ============================================================================ */
 
+static bool schema_name_needs_quoting(const char* s, size_t len) {
+    if (len == 0) return true;
+    if ((len == 4 && memcmp(s, "true", 4) == 0) ||
+        (len == 5 && memcmp(s, "false", 5) == 0)) return true;
+    if (s[0] == ' ' || s[len - 1] == ' ') return true;
+    bool could_num = true;
+    size_t num_start = (s[0] == '-') ? 1 : 0;
+    if (num_start >= len) could_num = false;
+    for (size_t i = 0; i < len; i++) {
+        unsigned char b = (unsigned char)s[i];
+        if (b <= 0x20 || b == ',' || b == '@' || b == ':' || b == '{' || b == '}' ||
+            b == '[' || b == ']' || b == '(' || b == ')' || b == '"' || b == '\\')
+            return true;
+        if (could_num && i >= num_start && !((b >= '0' && b <= '9') || b == '.'))
+            could_num = false;
+    }
+    return could_num && len > num_start;
+}
+
+static void ason_write_schema_name(ason_buf_t* buf, const char* s, size_t len) {
+    if (!schema_name_needs_quoting(s, len)) {
+        ason_buf_append(buf, s, len);
+        return;
+    }
+    ason_buf_push(buf, '"');
+    for (size_t i = 0; i < len; i++) {
+        char c = s[i];
+        switch (c) {
+            case '"': ason_buf_appends(buf, "\\\""); break;
+            case '\\': ason_buf_appends(buf, "\\\\"); break;
+            case '\n': ason_buf_appends(buf, "\\n"); break;
+            case '\r': ason_buf_appends(buf, "\\r"); break;
+            case '\t': ason_buf_appends(buf, "\\t"); break;
+            case '\b': ason_buf_appends(buf, "\\b"); break;
+            case '\f': ason_buf_appends(buf, "\\f"); break;
+            default: ason_buf_push(buf, c); break;
+        }
+    }
+    ason_buf_push(buf, '"');
+}
+
 void ason_write_schema(ason_buf_t* buf, const ason_desc_t* desc) {
     ason_buf_push(buf, '{');
     for (int i = 0; i < desc->field_count; i++) {
         if (i > 0) ason_buf_push(buf, ',');
         const ason_field_t* f = &desc->fields[i];
-        ason_buf_append(buf, f->name, f->name_len);
+        ason_write_schema_name(buf, f->name, f->name_len);
         if (f->type == ASON_STRUCT && f->sub_desc) {
             ason_buf_push(buf, '@');
             if (f->dump_fn) {
@@ -588,7 +629,7 @@ void ason_write_schema_typed(ason_buf_t* buf, const ason_desc_t* desc) {
     for (int i = 0; i < desc->field_count; i++) {
         if (i > 0) ason_buf_push(buf, ',');
         const ason_field_t* f = &desc->fields[i];
-        ason_buf_append(buf, f->name, f->name_len);
+        ason_write_schema_name(buf, f->name, f->name_len);
         if (f->type == ASON_STRUCT && f->sub_desc) {
             ason_buf_push(buf, '@');
             if (f->dump_fn) {
@@ -819,7 +860,7 @@ ason_err_t ason_decode_struct(const char** pos, const char* end, void* obj, cons
         ason_err_t err = ason_parse_schema(pos, end, schema, &schema_count, 64);
         if (err != ASON_OK) return err;
         ason_skip_ws(pos, end);
-        if (*pos >= end || **pos != ':') return ASON_ERR_SYNTAX;
+        if (*pos >= end || **pos != ':') { ason_free_schema_fields(schema, schema_count); return ASON_ERR_SYNTAX; }
         (*pos)++;
         ason_skip_ws(pos, end);
         /* Build field map */
@@ -833,7 +874,7 @@ ason_err_t ason_decode_struct(const char** pos, const char* end, void* obj, cons
                 }
             }
         }
-        if (*pos >= end || **pos != '(') return ASON_ERR_SYNTAX;
+        if (*pos >= end || **pos != '(') { ason_free_schema_fields(schema, schema_count); return ASON_ERR_SYNTAX; }
         (*pos)++;
         for (int i = 0; i < schema_count; i++) {
             ason_skip_ws(pos, end);
@@ -841,7 +882,7 @@ ason_err_t ason_decode_struct(const char** pos, const char* end, void* obj, cons
             if (i > 0) {
                 if (**pos == ',') { (*pos)++; ason_skip_ws(pos, end); if (*pos < end && **pos == ')') break; }
                 else if (**pos == ')') break;
-                else return ASON_ERR_SYNTAX;
+                else { ason_free_schema_fields(schema, schema_count); return ASON_ERR_SYNTAX; }
             }
             if (field_map[i] >= 0) {
                 const ason_field_t* f = &desc->fields[field_map[i]];
@@ -855,7 +896,7 @@ ason_err_t ason_decode_struct(const char** pos, const char* end, void* obj, cons
                 } else {
                     err = f->load_fn(pos, end, obj, f->offset);
                 }
-                if (err != ASON_OK) return err;
+                if (err != ASON_OK) { ason_free_schema_fields(schema, schema_count); return err; }
             } else {
                 ason_skip_value(pos, end);
             }
@@ -863,6 +904,7 @@ ason_err_t ason_decode_struct(const char** pos, const char* end, void* obj, cons
         ason_skip_remaining_tuple_values(pos, end);
         ason_skip_ws(pos, end);
         if (*pos < end && **pos == ')') (*pos)++;
+        ason_free_schema_fields(schema, schema_count);
         return ASON_OK;
     }
 
