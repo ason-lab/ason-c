@@ -724,8 +724,60 @@ ason_inline void ason_skip_remaining_tuple_values(const char** pos, const char* 
 /* Returns field names (just pointers + lengths into the input). */
 typedef struct { const char* name; size_t len; bool allocated; } ason_schema_field_t;
 
-ason_inline ason_err_t ason_parse_schema(const char** pos, const char* end,
-                                          ason_schema_field_t* fields, int* count, int max_fields) {
+static ason_err_t ason_parse_schema(const char** pos, const char* end,
+                                    ason_schema_field_t* fields, int* count, int max_fields);
+static void ason_free_schema_fields(ason_schema_field_t* fields, int count);
+
+static ason_err_t ason_validate_schema_scalar_type(const char** pos, const char* end) {
+    const char* start = *pos;
+    while (*pos < end && **pos != ',' && **pos != '}' && **pos != ']' &&
+           **pos != ' ' && **pos != '\t') (*pos)++;
+    size_t len = *pos - start;
+    if (len == 0) return ASON_ERR_SYNTAX;
+    if (start[len - 1] == '?') len--;
+    if ((len == 3 && memcmp(start, "int", 3) == 0) ||
+        (len == 3 && memcmp(start, "str", 3) == 0) ||
+        (len == 4 && memcmp(start, "bool", 4) == 0) ||
+        (len == 5 && memcmp(start, "float", 5) == 0)) {
+        return ASON_OK;
+    }
+    return ASON_ERR_SYNTAX;
+}
+
+static ason_err_t ason_validate_schema_annotation(const char** pos, const char* end) {
+    if (*pos >= end) return ASON_ERR_SYNTAX;
+    if (**pos == '{') {
+        ason_schema_field_t nested_fields[64];
+        int nested_count = 0;
+        ason_err_t err = ason_parse_schema(pos, end, nested_fields, &nested_count, 64);
+        if (err != ASON_OK) return err;
+        ason_free_schema_fields(nested_fields, nested_count);
+        return ASON_OK;
+    }
+    if (**pos == '[') {
+        (*pos)++;
+        ason_skip_ws(pos, end);
+        if (*pos < end && **pos == ']') { (*pos)++; return ASON_OK; }
+        if (*pos < end && **pos == '{') {
+            ason_schema_field_t nested_fields[64];
+            int nested_count = 0;
+            ason_err_t err = ason_parse_schema(pos, end, nested_fields, &nested_count, 64);
+            if (err != ASON_OK) return err;
+            ason_free_schema_fields(nested_fields, nested_count);
+        } else {
+            ason_err_t err = ason_validate_schema_scalar_type(pos, end);
+            if (err != ASON_OK) return err;
+        }
+        ason_skip_ws(pos, end);
+        if (*pos >= end || **pos != ']') return ASON_ERR_SYNTAX;
+        (*pos)++;
+        return ASON_OK;
+    }
+    return ason_validate_schema_scalar_type(pos, end);
+}
+
+static ason_err_t ason_parse_schema(const char** pos, const char* end,
+                                    ason_schema_field_t* fields, int* count, int max_fields) {
     ason_skip_ws(pos, end);
     if (*pos >= end || **pos != '{') return ASON_ERR_SYNTAX;
     (*pos)++;
@@ -760,27 +812,20 @@ ason_inline ason_err_t ason_parse_schema(const char** pos, const char* end,
             fields[n].allocated = false;
         }
         n++;
-        /* Skip type annotation if present: @type  or  @{...} or @[...] */
+        /* Validate and skip type annotation if present: @type  or  @{...} or @[...] */
         ason_skip_ws(pos, end);
         if (*pos < end && **pos == '@') {
             (*pos)++;
             ason_skip_ws(pos, end);
-            if (*pos < end) {
-                char c = **pos;
-                if (c == '{') { ason_skip_balanced(pos, end, '{', '}'); }
-                else if (c == '[') { ason_skip_balanced(pos, end, '[', ']'); }
-                else {
-                    while (*pos < end && **pos != ',' && **pos != '}' &&
-                           **pos != ' ' && **pos != '\t') (*pos)++;
-                }
-            }
+            ason_err_t err = ason_validate_schema_annotation(pos, end);
+            if (err != ASON_OK) return err;
         }
     }
     *count = n;
     return ASON_OK;
 }
 
-ason_inline void ason_free_schema_fields(ason_schema_field_t* fields, int count) {
+static void ason_free_schema_fields(ason_schema_field_t* fields, int count) {
     for (int i = 0; i < count; i++) {
         if (fields[i].allocated && fields[i].name) free((void*)fields[i].name);
     }

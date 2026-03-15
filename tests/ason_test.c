@@ -637,6 +637,23 @@ void test_typed_schema_parse(void) {
     PASS();
 }
 
+void test_reject_schema_type_aliases(void) {
+    TEST(reject_schema_type_aliases);
+    TSimple r = {0};
+    const char* cases[] = {
+        "{id@integer,name@str,active@bool}:(42,Hello,false)",
+        "{id@int,name@string,active@bool}:(42,Hello,false)",
+        "{id@int,name@str,active@boolean}:(42,Hello,false)",
+        "{items@[string]}:([Alice])",
+        "{profile@{name@string}}:((Alice))",
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        ason_err_t err = ason_decode_TSimple(cases[i], strlen(cases[i]), &r);
+        if (err == ASON_OK) FAIL("expected alias rejection");
+    }
+    PASS();
+}
+
 void test_schema_field_mismatch(void) {
     TEST(schema_field_mismatch);
     const char* input = "{id,extra_field,name,active}:(42,ignored,Hello,true)";
@@ -1121,6 +1138,7 @@ int main(void) {
     test_whitespace();
     test_multiline();
     test_typed_schema_parse();
+    test_reject_schema_type_aliases();
     test_schema_field_mismatch();
 
     printf("\n--- Edge cases ---\n");
