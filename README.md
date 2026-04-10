@@ -144,8 +144,9 @@ For deeply nested 100-record company payloads, ASON text decoding was `3.10x` fa
 
 ## Notes
 
-- Scalar type annotations such as `@int` and `@str` are optional metadata.
-- Structural markers for complex fields are not optional: nested objects and arrays must keep `@{...}` or `@[...]` in the schema.
+- `@` is the field binding marker in schema text.
+- Scalar hints such as `@int` and `@str` are optional.
+- Structural bindings for complex fields are not optional: nested objects and arrays must keep `@{...}` or `@[...]` in the schema.
 - The C implementation is now aligned with the current spec and no longer supports the older dedicated map API.
 
 ## Contributors
