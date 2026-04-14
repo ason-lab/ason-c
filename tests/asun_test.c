@@ -3,7 +3,7 @@
 #include <string.h>
 #include <assert.h>
 #include <math.h>
-#include "ason.h"
+#include "asun.h"
 
 static int tests_passed = 0;
 static int tests_failed = 0;
@@ -22,119 +22,119 @@ static int tests_failed = 0;
  * Test structs
  * =========================================================================== */
 
-typedef struct { int64_t id; ason_string_t name; bool active; } TSimple;
-ASON_FIELDS(TSimple, 3,
-    ASON_FIELD(TSimple, id,     "id",     i64),
-    ASON_FIELD(TSimple, name,   "name",   str),
-    ASON_FIELD(TSimple, active, "active", bool))
+typedef struct { int64_t id; asun_string_t name; bool active; } TSimple;
+ASUN_FIELDS(TSimple, 3,
+    ASUN_FIELD(TSimple, id,     "id",     i64),
+    ASUN_FIELD(TSimple, name,   "name",   str),
+    ASUN_FIELD(TSimple, active, "active", bool))
 
-static void free_tsimple(TSimple* s) { ason_string_free(&s->name); }
+static void free_tsimple(TSimple* s) { asun_string_free(&s->name); }
 
-typedef struct { int64_t id; ason_opt_str label; ason_opt_i64 count; } TWithOptional;
-ASON_FIELDS(TWithOptional, 3,
-    ASON_FIELD(TWithOptional, id,    "id",    i64),
-    ASON_FIELD(TWithOptional, label, "label", opt_str),
-    ASON_FIELD(TWithOptional, count, "count", opt_i64))
+typedef struct { int64_t id; asun_opt_str label; asun_opt_i64 count; } TWithOptional;
+ASUN_FIELDS(TWithOptional, 3,
+    ASUN_FIELD(TWithOptional, id,    "id",    i64),
+    ASUN_FIELD(TWithOptional, label, "label", opt_str),
+    ASUN_FIELD(TWithOptional, count, "count", opt_i64))
 
 static void free_twithoptional(TWithOptional* w) {
-    if (w->label.has_value) ason_string_free(&w->label.value);
+    if (w->label.has_value) asun_string_free(&w->label.value);
 }
 
-typedef struct { ason_string_t name; ason_vec_i64 nums; } TWithVec;
-ASON_FIELDS(TWithVec, 2,
-    ASON_FIELD(TWithVec, name, "name", str),
-    ASON_FIELD(TWithVec, nums, "nums", vec_i64))
+typedef struct { asun_string_t name; asun_vec_i64 nums; } TWithVec;
+ASUN_FIELDS(TWithVec, 2,
+    ASUN_FIELD(TWithVec, name, "name", str),
+    ASUN_FIELD(TWithVec, nums, "nums", vec_i64))
 
-static void free_twithvec(TWithVec* w) { ason_string_free(&w->name); ason_vec_i64_free(&w->nums); }
+static void free_twithvec(TWithVec* w) { asun_string_free(&w->name); asun_vec_i64_free(&w->nums); }
 
-typedef struct { ason_string_t val; int64_t n; } TInner;
-ASON_FIELDS(TInner, 2,
-    ASON_FIELD(TInner, val, "val", str),
-    ASON_FIELD(TInner, n,   "n",   i64))
+typedef struct { asun_string_t val; int64_t n; } TInner;
+ASUN_FIELDS(TInner, 2,
+    ASUN_FIELD(TInner, val, "val", str),
+    ASUN_FIELD(TInner, n,   "n",   i64))
 
-typedef struct { ason_string_t label; TInner inner; } TOuter;
-ASON_FIELDS(TOuter, 2,
-    ASON_FIELD(TOuter, label, "label", str),
-    ASON_FIELD_STRUCT(TOuter, inner, "inner", &TInner_ason_desc))
+typedef struct { asun_string_t label; TInner inner; } TOuter;
+ASUN_FIELDS(TOuter, 2,
+    ASUN_FIELD(TOuter, label, "label", str),
+    ASUN_FIELD_STRUCT(TOuter, inner, "inner", &TInner_asun_desc))
 
-static void free_touter(TOuter* o) { ason_string_free(&o->label); ason_string_free(&o->inner.val); }
+static void free_touter(TOuter* o) { asun_string_free(&o->label); asun_string_free(&o->inner.val); }
 
-typedef struct { ason_string_t key; int64_t value; } TAttr;
-ASON_FIELDS(TAttr, 2,
-    ASON_FIELD(TAttr, key,   "key",   str),
-    ASON_FIELD(TAttr, value, "value", i64))
-ASON_VEC_STRUCT_DEFINE(TAttr)
+typedef struct { asun_string_t key; int64_t value; } TAttr;
+ASUN_FIELDS(TAttr, 2,
+    ASUN_FIELD(TAttr, key,   "key",   str),
+    ASUN_FIELD(TAttr, value, "value", i64))
+ASUN_VEC_STRUCT_DEFINE(TAttr)
 
-typedef struct { ason_string_t name; ason_vec_TAttr attrs; } TWithEntries;
-ASON_FIELDS(TWithEntries, 2,
-    ASON_FIELD(TWithEntries, name, "name", str),
-    ASON_FIELD_VEC_STRUCT(TWithEntries, attrs, "attrs", TAttr))
+typedef struct { asun_string_t name; asun_vec_TAttr attrs; } TWithEntries;
+ASUN_FIELDS(TWithEntries, 2,
+    ASUN_FIELD(TWithEntries, name, "name", str),
+    ASUN_FIELD_VEC_STRUCT(TWithEntries, attrs, "attrs", TAttr))
 
 static void free_twithentries(TWithEntries* m) {
-    ason_string_free(&m->name);
-    for (size_t i = 0; i < m->attrs.len; i++) ason_string_free(&m->attrs.data[i].key);
-    ason_vec_TAttr_free(&m->attrs);
+    asun_string_free(&m->name);
+    for (size_t i = 0; i < m->attrs.len; i++) asun_string_free(&m->attrs.data[i].key);
+    asun_vec_TAttr_free(&m->attrs);
 }
 
 typedef struct { double a; double b; float c; } TFloats;
-ASON_FIELDS(TFloats, 3,
-    ASON_FIELD(TFloats, a, "a", f64),
-    ASON_FIELD(TFloats, b, "b", f64),
-    ASON_FIELD(TFloats, c, "c", f32))
+ASUN_FIELDS(TFloats, 3,
+    ASUN_FIELD(TFloats, a, "a", f64),
+    ASUN_FIELD(TFloats, b, "b", f64),
+    ASUN_FIELD(TFloats, c, "c", f32))
 
 typedef struct {
     int8_t i8; int16_t i16; int32_t i32; int64_t i64v;
     uint8_t u8; uint16_t u16; uint32_t u32; uint64_t u64v;
 } TAllNums;
-ASON_FIELDS(TAllNums, 8,
-    ASON_FIELD(TAllNums, i8,  "i8",  i8),
-    ASON_FIELD(TAllNums, i16, "i16", i16),
-    ASON_FIELD(TAllNums, i32, "i32", i32),
-    ASON_FIELD(TAllNums, i64v,"i64", i64),
-    ASON_FIELD(TAllNums, u8,  "u8",  u8),
-    ASON_FIELD(TAllNums, u16, "u16", u16),
-    ASON_FIELD(TAllNums, u32, "u32", u32),
-    ASON_FIELD(TAllNums, u64v,"u64", u64))
+ASUN_FIELDS(TAllNums, 8,
+    ASUN_FIELD(TAllNums, i8,  "i8",  i8),
+    ASUN_FIELD(TAllNums, i16, "i16", i16),
+    ASUN_FIELD(TAllNums, i32, "i32", i32),
+    ASUN_FIELD(TAllNums, i64v,"i64", i64),
+    ASUN_FIELD(TAllNums, u8,  "u8",  u8),
+    ASUN_FIELD(TAllNums, u16, "u16", u16),
+    ASUN_FIELD(TAllNums, u32, "u32", u32),
+    ASUN_FIELD(TAllNums, u64v,"u64", u64))
 
 /* Deep nesting: DeepA -> DeepB -> DeepC */
-typedef struct { ason_string_t name; int64_t val; } TDeepA;
-ASON_FIELDS(TDeepA, 2, ASON_FIELD(TDeepA, name, "name", str), ASON_FIELD(TDeepA, val, "val", i64))
-ASON_VEC_STRUCT_DEFINE(TDeepA)
+typedef struct { asun_string_t name; int64_t val; } TDeepA;
+ASUN_FIELDS(TDeepA, 2, ASUN_FIELD(TDeepA, name, "name", str), ASUN_FIELD(TDeepA, val, "val", i64))
+ASUN_VEC_STRUCT_DEFINE(TDeepA)
 
-typedef struct { ason_string_t label; ason_vec_TDeepA items; } TDeepB;
-ASON_FIELDS(TDeepB, 2,
-    ASON_FIELD(TDeepB, label, "label", str),
-    ASON_FIELD_VEC_STRUCT(TDeepB, items, "items", TDeepA))
-ASON_VEC_STRUCT_DEFINE(TDeepB)
+typedef struct { asun_string_t label; asun_vec_TDeepA items; } TDeepB;
+ASUN_FIELDS(TDeepB, 2,
+    ASUN_FIELD(TDeepB, label, "label", str),
+    ASUN_FIELD_VEC_STRUCT(TDeepB, items, "items", TDeepA))
+ASUN_VEC_STRUCT_DEFINE(TDeepB)
 
-typedef struct { ason_string_t title; ason_vec_TDeepB groups; } TDeepC;
-ASON_FIELDS(TDeepC, 2,
-    ASON_FIELD(TDeepC, title, "title", str),
-    ASON_FIELD_VEC_STRUCT(TDeepC, groups, "groups", TDeepB))
+typedef struct { asun_string_t title; asun_vec_TDeepB groups; } TDeepC;
+ASUN_FIELDS(TDeepC, 2,
+    ASUN_FIELD(TDeepC, title, "title", str),
+    ASUN_FIELD_VEC_STRUCT(TDeepC, groups, "groups", TDeepB))
 
-typedef struct { ason_vec_vec_i64 matrix; } TNestedVec;
-ASON_FIELDS(TNestedVec, 1, ASON_FIELD(TNestedVec, matrix, "matrix", vec_vec_i64))
+typedef struct { asun_vec_vec_i64 matrix; } TNestedVec;
+ASUN_FIELDS(TNestedVec, 1, ASUN_FIELD(TNestedVec, matrix, "matrix", vec_vec_i64))
 
-typedef struct { ason_string_t val; } TStringOnly;
-ASON_FIELDS(TStringOnly, 1, ASON_FIELD(TStringOnly, val, "val", str))
+typedef struct { asun_string_t val; } TStringOnly;
+ASUN_FIELDS(TStringOnly, 1, ASUN_FIELD(TStringOnly, val, "val", str))
 
-typedef struct { int64_t id_uuid; ason_string_t numeric; bool special; } TQuotedSchema;
-ASON_FIELDS(TQuotedSchema, 3,
-    ASON_FIELD(TQuotedSchema, id_uuid, "id uuid", i64),
-    ASON_FIELD(TQuotedSchema, numeric, "65", str),
-    ASON_FIELD(TQuotedSchema, special, "{}[]@\"", bool))
-ASON_FIELDS_BIN(TQuotedSchema, 3)
+typedef struct { int64_t id_uuid; asun_string_t numeric; bool special; } TQuotedSchema;
+ASUN_FIELDS(TQuotedSchema, 3,
+    ASUN_FIELD(TQuotedSchema, id_uuid, "id uuid", i64),
+    ASUN_FIELD(TQuotedSchema, numeric, "65", str),
+    ASUN_FIELD(TQuotedSchema, special, "{}[]@\"", bool))
+ASUN_FIELDS_BIN(TQuotedSchema, 3)
 
-static void free_tquoted(TQuotedSchema* q) { ason_string_free(&q->numeric); }
+static void free_tquoted(TQuotedSchema* q) { asun_string_free(&q->numeric); }
 
-typedef struct { ason_vec_bool flags; } TWithBoolVec;
-ASON_FIELDS(TWithBoolVec, 1, ASON_FIELD(TWithBoolVec, flags, "flags", vec_bool))
+typedef struct { asun_vec_bool flags; } TWithBoolVec;
+ASUN_FIELDS(TWithBoolVec, 1, ASUN_FIELD(TWithBoolVec, flags, "flags", vec_bool))
 
-typedef struct { ason_vec_i64 nums; } TWithIntVec;
-ASON_FIELDS(TWithIntVec, 1, ASON_FIELD(TWithIntVec, nums, "nums", vec_i64))
+typedef struct { asun_vec_i64 nums; } TWithIntVec;
+ASUN_FIELDS(TWithIntVec, 1, ASUN_FIELD(TWithIntVec, nums, "nums", vec_i64))
 
-typedef struct { ason_vec_str tags; } TWithStrVec;
-ASON_FIELDS(TWithStrVec, 1, ASON_FIELD(TWithStrVec, tags, "tags", vec_str))
+typedef struct { asun_vec_str tags; } TWithStrVec;
+ASUN_FIELDS(TWithStrVec, 1, ASUN_FIELD(TWithStrVec, tags, "tags", vec_str))
 
 /* ===========================================================================
  * Tests
@@ -142,47 +142,47 @@ ASON_FIELDS(TWithStrVec, 1, ASON_FIELD(TWithStrVec, tags, "tags", vec_str))
 
 void test_simple_roundtrip(void) {
     TEST(simple_roundtrip);
-    TSimple s = {42, ason_string_from("Alice"), true};
-    ason_buf_t buf = ason_encode_TSimple(&s);
+    TSimple s = {42, asun_string_from("Alice"), true};
+    asun_buf_t buf = asun_encode_TSimple(&s);
     TSimple s2 = {0};
-    ason_err_t err = ason_decode_TSimple(buf.data, buf.len, &s2);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TSimple(buf.data, buf.len, &s2);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_I(s2.id, 42);
     ASSERT_EQ_S(s2.name.data, "Alice");
     ASSERT_TRUE(s2.active);
-    ason_buf_free(&buf); free_tsimple(&s); free_tsimple(&s2);
+    asun_buf_free(&buf); free_tsimple(&s); free_tsimple(&s2);
     PASS();
 }
 
 void test_typed_roundtrip(void) {
     TEST(typed_roundtrip);
-    TSimple s = {1, ason_string_from("Bob"), false};
-    ason_buf_t buf = ason_encode_typed_TSimple(&s);
+    TSimple s = {1, asun_string_from("Bob"), false};
+    asun_buf_t buf = asun_encode_typed_TSimple(&s);
     ASSERT_TRUE(strstr(buf.data, "id@int") != NULL || strstr(buf.data, "id@i64") != NULL);
     TSimple s2 = {0};
-    ason_err_t err = ason_decode_TSimple(buf.data, buf.len, &s2);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TSimple(buf.data, buf.len, &s2);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_I(s2.id, 1);
     ASSERT_EQ_S(s2.name.data, "Bob");
     ASSERT_FALSE(s2.active);
-    ason_buf_free(&buf); free_tsimple(&s); free_tsimple(&s2);
+    asun_buf_free(&buf); free_tsimple(&s); free_tsimple(&s2);
     PASS();
 }
 
 void test_vec_roundtrip(void) {
     TEST(vec_roundtrip);
-    TSimple vec[] = {{1, ason_string_from("A"), true},
-                     {2, ason_string_from("B"), false},
-                     {3, ason_string_from("C"), true}};
-    ason_buf_t buf = ason_encode_vec_TSimple(vec, 3);
+    TSimple vec[] = {{1, asun_string_from("A"), true},
+                     {2, asun_string_from("B"), false},
+                     {3, asun_string_from("C"), true}};
+    asun_buf_t buf = asun_encode_vec_TSimple(vec, 3);
     TSimple* vec2 = NULL; size_t n = 0;
-    ason_err_t err = ason_decode_vec_TSimple(buf.data, buf.len, &vec2, &n);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_vec_TSimple(buf.data, buf.len, &vec2, &n);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_U(n, 3u);
     ASSERT_EQ_I(vec2[0].id, 1);
     ASSERT_EQ_S(vec2[1].name.data, "B");
     ASSERT_FALSE(vec2[1].active);
-    ason_buf_free(&buf);
+    asun_buf_free(&buf);
     for (size_t i = 0; i < 3; i++) free_tsimple(&vec[i]);
     for (size_t i = 0; i < n; i++) free_tsimple(&vec2[i]);
     free(vec2);
@@ -191,15 +191,15 @@ void test_vec_roundtrip(void) {
 
 void test_vec_typed_roundtrip(void) {
     TEST(vec_typed_roundtrip);
-    TSimple vec[] = {{1, ason_string_from("A"), true}};
-    ason_buf_t buf = ason_encode_typed_vec_TSimple(vec, 1);
+    TSimple vec[] = {{1, asun_string_from("A"), true}};
+    asun_buf_t buf = asun_encode_typed_vec_TSimple(vec, 1);
     ASSERT_TRUE(strstr(buf.data, "id@") != NULL);
     TSimple* vec2 = NULL; size_t n = 0;
-    ason_err_t err = ason_decode_vec_TSimple(buf.data, buf.len, &vec2, &n);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_vec_TSimple(buf.data, buf.len, &vec2, &n);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_U(n, 1u);
     ASSERT_EQ_S(vec2[0].name.data, "A");
-    ason_buf_free(&buf);
+    asun_buf_free(&buf);
     free_tsimple(&vec[0]);
     free_tsimple(&vec2[0]); free(vec2);
     PASS();
@@ -209,8 +209,8 @@ void test_optional_present(void) {
     TEST(optional_present);
     const char* input = "{id,label,count}:(1,hello,42)";
     TWithOptional r = {0};
-    ason_err_t err = ason_decode_TWithOptional(input, strlen(input), &r);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TWithOptional(input, strlen(input), &r);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_I(r.id, 1);
     ASSERT_TRUE(r.label.has_value);
     ASSERT_EQ_S(r.label.value.data, "hello");
@@ -224,8 +224,8 @@ void test_optional_absent(void) {
     TEST(optional_absent);
     const char* input = "{id,label,count}:(1,,)";
     TWithOptional r = {0};
-    ason_err_t err = ason_decode_TWithOptional(input, strlen(input), &r);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TWithOptional(input, strlen(input), &r);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_I(r.id, 1);
     ASSERT_FALSE(r.label.has_value);
     ASSERT_FALSE(r.count.has_value);
@@ -235,53 +235,53 @@ void test_optional_absent(void) {
 
 void test_quoted_schema_field_names(void) {
     TEST(quoted_schema_field_names);
-    TQuotedSchema s = {1, ason_string_from("Alice"), true};
-    ason_buf_t untyped = ason_encode_TQuotedSchema(&s);
+    TQuotedSchema s = {1, asun_string_from("Alice"), true};
+    asun_buf_t untyped = asun_encode_TQuotedSchema(&s);
     ASSERT_TRUE(strstr(untyped.data, "\"id uuid\"") != NULL);
     ASSERT_TRUE(strstr(untyped.data, "\"65\"") != NULL);
     ASSERT_TRUE(strstr(untyped.data, "\"{}[]@\\\"\"") != NULL);
     TQuotedSchema out0 = {0};
-    ason_err_t err = ason_decode_TQuotedSchema(untyped.data, untyped.len, &out0);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TQuotedSchema(untyped.data, untyped.len, &out0);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_I(out0.id_uuid, 1);
     ASSERT_EQ_S(out0.numeric.data, "Alice");
     ASSERT_TRUE(out0.special);
-    ason_buf_t buf = ason_encode_typed_TQuotedSchema(&s);
+    asun_buf_t buf = asun_encode_typed_TQuotedSchema(&s);
     ASSERT_TRUE(strstr(buf.data, "\"id uuid\"@int") != NULL);
     ASSERT_TRUE(strstr(buf.data, "\"65\"@str") != NULL);
     ASSERT_TRUE(strstr(buf.data, "\"{}[]@\\\"\"@bool") != NULL);
     TQuotedSchema out = {0};
-    err = ason_decode_TQuotedSchema(buf.data, buf.len, &out);
-    ASSERT_TRUE(err == ASON_OK);
+    err = asun_decode_TQuotedSchema(buf.data, buf.len, &out);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_I(out.id_uuid, 1);
     ASSERT_EQ_S(out.numeric.data, "Alice");
     ASSERT_TRUE(out.special);
-    ason_buf_t pretty_untyped = ason_encode_pretty_TQuotedSchema(&s);
+    asun_buf_t pretty_untyped = asun_encode_pretty_TQuotedSchema(&s);
     TQuotedSchema out_pretty_untyped = {0};
-    err = ason_decode_TQuotedSchema(pretty_untyped.data, pretty_untyped.len, &out_pretty_untyped);
-    ASSERT_TRUE(err == ASON_OK);
+    err = asun_decode_TQuotedSchema(pretty_untyped.data, pretty_untyped.len, &out_pretty_untyped);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_I(out_pretty_untyped.id_uuid, 1);
     ASSERT_EQ_S(out_pretty_untyped.numeric.data, "Alice");
     ASSERT_TRUE(out_pretty_untyped.special);
-    ason_buf_t pretty = ason_encode_pretty_typed_TQuotedSchema(&s);
+    asun_buf_t pretty = asun_encode_pretty_typed_TQuotedSchema(&s);
     TQuotedSchema out2 = {0};
-    err = ason_decode_TQuotedSchema(pretty.data, pretty.len, &out2);
-    ASSERT_TRUE(err == ASON_OK);
+    err = asun_decode_TQuotedSchema(pretty.data, pretty.len, &out2);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_I(out2.id_uuid, 1);
     ASSERT_EQ_S(out2.numeric.data, "Alice");
     ASSERT_TRUE(out2.special);
-    ason_buf_t bin = ason_encode_bin_TQuotedSchema(&s);
+    asun_buf_t bin = asun_encode_bin_TQuotedSchema(&s);
     TQuotedSchema out3 = {0};
-    err = ason_decode_bin_TQuotedSchema(bin.data, bin.len, &out3);
-    ASSERT_TRUE(err == ASON_OK);
+    err = asun_decode_bin_TQuotedSchema(bin.data, bin.len, &out3);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_I(out3.id_uuid, 1);
     ASSERT_EQ_S(out3.numeric.data, "Alice");
     ASSERT_TRUE(out3.special);
-    ason_buf_free(&untyped);
-    ason_buf_free(&buf);
-    ason_buf_free(&pretty_untyped);
-    ason_buf_free(&pretty);
-    ason_buf_free(&bin);
+    asun_buf_free(&untyped);
+    asun_buf_free(&buf);
+    asun_buf_free(&pretty_untyped);
+    asun_buf_free(&pretty);
+    asun_buf_free(&bin);
     free_tquoted(&s);
     free_tquoted(&out0);
     free_tquoted(&out);
@@ -293,16 +293,16 @@ void test_quoted_schema_field_names(void) {
 
 void test_optional_dump(void) {
     TEST(optional_dump);
-    TWithOptional w = {1, {true, ason_string_from("hi")}, {false, 0}};
-    ason_buf_t buf = ason_encode_TWithOptional(&w);
+    TWithOptional w = {1, {true, asun_string_from("hi")}, {false, 0}};
+    asun_buf_t buf = asun_encode_TWithOptional(&w);
     TWithOptional w2 = {0};
-    ason_err_t err = ason_decode_TWithOptional(buf.data, buf.len, &w2);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TWithOptional(buf.data, buf.len, &w2);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_I(w2.id, 1);
     ASSERT_TRUE(w2.label.has_value);
     ASSERT_EQ_S(w2.label.value.data, "hi");
     ASSERT_FALSE(w2.count.has_value);
-    ason_buf_free(&buf); free_twithoptional(&w); free_twithoptional(&w2);
+    asun_buf_free(&buf); free_twithoptional(&w); free_twithoptional(&w2);
     PASS();
 }
 
@@ -310,8 +310,8 @@ void test_vec_field(void) {
     TEST(vec_field);
     const char* input = "{name,nums@[]}:(test,[1,2,3,4,5])";
     TWithVec r = {0};
-    ason_err_t err = ason_decode_TWithVec(input, strlen(input), &r);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TWithVec(input, strlen(input), &r);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_S(r.name.data, "test");
     ASSERT_EQ_U(r.nums.len, 5u);
     ASSERT_EQ_I(r.nums.data[0], 1);
@@ -324,17 +324,17 @@ void test_empty_vec(void) {
     TEST(empty_vec);
     const char* input = "{name,nums@[]}:(test,[])";
     TWithVec r = {0};
-    ason_err_t err = ason_decode_TWithVec(input, strlen(input), &r);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TWithVec(input, strlen(input), &r);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_S(r.name.data, "test");
     ASSERT_EQ_U(r.nums.len, 0u);
-    ason_buf_t buf = ason_encode_TWithVec(&r);
+    asun_buf_t buf = asun_encode_TWithVec(&r);
     ASSERT_TRUE(strstr(buf.data, "nums@[]") != NULL);
     TWithVec r2 = {0};
-    err = ason_decode_TWithVec(buf.data, buf.len, &r2);
-    ASSERT_TRUE(err == ASON_OK);
+    err = asun_decode_TWithVec(buf.data, buf.len, &r2);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_U(r2.nums.len, 0u);
-    ason_buf_free(&buf); free_twithvec(&r); free_twithvec(&r2);
+    asun_buf_free(&buf); free_twithvec(&r); free_twithvec(&r2);
     PASS();
 }
 
@@ -342,8 +342,8 @@ void test_nested_struct(void) {
     TEST(nested_struct);
     const char* input = "{label,inner@{val,n}}:(hello,(world,42))";
     TOuter r = {0};
-    ason_err_t err = ason_decode_TOuter(input, strlen(input), &r);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TOuter(input, strlen(input), &r);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_S(r.label.data, "hello");
     ASSERT_EQ_S(r.inner.val.data, "world");
     ASSERT_EQ_I(r.inner.n, 42);
@@ -353,16 +353,16 @@ void test_nested_struct(void) {
 
 void test_nested_roundtrip(void) {
     TEST(nested_roundtrip);
-    TOuter o = {ason_string_from("test"), {ason_string_from("value"), 99}};
-    ason_buf_t buf = ason_encode_TOuter(&o);
+    TOuter o = {asun_string_from("test"), {asun_string_from("value"), 99}};
+    asun_buf_t buf = asun_encode_TOuter(&o);
     ASSERT_TRUE(strstr(buf.data, "inner@{val,n}") != NULL);
     TOuter o2 = {0};
-    ason_err_t err = ason_decode_TOuter(buf.data, buf.len, &o2);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TOuter(buf.data, buf.len, &o2);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_S(o2.label.data, "test");
     ASSERT_EQ_S(o2.inner.val.data, "value");
     ASSERT_EQ_I(o2.inner.n, 99);
-    ason_buf_free(&buf); free_touter(&o); free_touter(&o2);
+    asun_buf_free(&buf); free_touter(&o); free_touter(&o2);
     PASS();
 }
 
@@ -370,8 +370,8 @@ void test_entry_list_field(void) {
     TEST(entry_list_field);
     const char* input = "{name,attrs@[{key,value}]}:(Alice,[(age,30),(score,95)])";
     TWithEntries r = {0};
-    ason_err_t err = ason_decode_TWithEntries(input, strlen(input), &r);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TWithEntries(input, strlen(input), &r);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_S(r.name.data, "Alice");
     ASSERT_EQ_U(r.attrs.len, 2u);
     bool found_age = false, found_score = false;
@@ -386,17 +386,17 @@ void test_entry_list_field(void) {
 
 void test_entry_list_roundtrip(void) {
     TEST(entry_list_roundtrip);
-    TWithEntries m = {ason_string_from("Bob"), ason_vec_TAttr_new()};
-    ason_vec_TAttr_push(&m.attrs, (TAttr){ason_string_from("x"), 1});
-    ason_vec_TAttr_push(&m.attrs, (TAttr){ason_string_from("y"), 2});
-    ason_buf_t buf = ason_encode_TWithEntries(&m);
+    TWithEntries m = {asun_string_from("Bob"), asun_vec_TAttr_new()};
+    asun_vec_TAttr_push(&m.attrs, (TAttr){asun_string_from("x"), 1});
+    asun_vec_TAttr_push(&m.attrs, (TAttr){asun_string_from("y"), 2});
+    asun_buf_t buf = asun_encode_TWithEntries(&m);
     ASSERT_TRUE(strstr(buf.data, "attrs@[{key,value}]") != NULL);
     TWithEntries m2 = {0};
-    ason_err_t err = ason_decode_TWithEntries(buf.data, buf.len, &m2);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TWithEntries(buf.data, buf.len, &m2);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_S(m2.name.data, "Bob");
     ASSERT_EQ_U(m2.attrs.len, 2u);
-    ason_buf_free(&buf); free_twithentries(&m); free_twithentries(&m2);
+    asun_buf_free(&buf); free_twithentries(&m); free_twithentries(&m2);
     PASS();
 }
 
@@ -404,8 +404,8 @@ void test_quoted_string(void) {
     TEST(quoted_string);
     const char* input = "{id,name,active}:(1,\"hello world\",true)";
     TSimple r = {0};
-    ason_err_t err = ason_decode_TSimple(input, strlen(input), &r);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TSimple(input, strlen(input), &r);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_S(r.name.data, "hello world");
     free_tsimple(&r);
     PASS();
@@ -413,68 +413,68 @@ void test_quoted_string(void) {
 
 void test_escape_sequences(void) {
     TEST(escape_sequences);
-    TStringOnly s = {ason_string_from("say \"hi\", then (wave)\tnewline\nend")};
-    ason_buf_t buf = ason_encode_TStringOnly(&s);
+    TStringOnly s = {asun_string_from("say \"hi\", then (wave)\tnewline\nend")};
+    asun_buf_t buf = asun_encode_TStringOnly(&s);
     TStringOnly s2 = {0};
-    ason_err_t err = ason_decode_TStringOnly(buf.data, buf.len, &s2);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TStringOnly(buf.data, buf.len, &s2);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_S(s.val.data, s2.val.data);
-    ason_buf_free(&buf); ason_string_free(&s.val); ason_string_free(&s2.val);
+    asun_buf_free(&buf); asun_string_free(&s.val); asun_string_free(&s2.val);
     PASS();
 }
 
 void test_string_needs_quoting(void) {
     TEST(string_needs_quoting);
-    TStringOnly s1 = {ason_string_from("hello,world")};
-    ason_buf_t buf1 = ason_encode_TStringOnly(&s1);
+    TStringOnly s1 = {asun_string_from("hello,world")};
+    asun_buf_t buf1 = asun_encode_TStringOnly(&s1);
     ASSERT_TRUE(strstr(buf1.data, "\"hello,world\"") != NULL);
-    ason_buf_free(&buf1); ason_string_free(&s1.val);
+    asun_buf_free(&buf1); asun_string_free(&s1.val);
 
-    TStringOnly s2 = {ason_string_from("true")};
-    ason_buf_t buf2 = ason_encode_TStringOnly(&s2);
+    TStringOnly s2 = {asun_string_from("true")};
+    asun_buf_t buf2 = asun_encode_TStringOnly(&s2);
     ASSERT_TRUE(strstr(buf2.data, "\"true\"") != NULL);
-    ason_buf_free(&buf2); ason_string_free(&s2.val);
+    asun_buf_free(&buf2); asun_string_free(&s2.val);
 
-    TStringOnly s3 = {ason_string_from("12345")};
-    ason_buf_t buf3 = ason_encode_TStringOnly(&s3);
+    TStringOnly s3 = {asun_string_from("12345")};
+    asun_buf_t buf3 = asun_encode_TStringOnly(&s3);
     ASSERT_TRUE(strstr(buf3.data, "\"12345\"") != NULL);
-    ason_buf_free(&buf3); ason_string_free(&s3.val);
+    asun_buf_free(&buf3); asun_string_free(&s3.val);
 
-    TStringOnly s4 = {ason_string_from("@Alice")};
-    ason_buf_t buf4 = ason_encode_TStringOnly(&s4);
+    TStringOnly s4 = {asun_string_from("@Alice")};
+    asun_buf_t buf4 = asun_encode_TStringOnly(&s4);
     ASSERT_TRUE(strstr(buf4.data, "\"@Alice\"") != NULL);
     TStringOnly s4b = {0};
-    ason_err_t err4 = ason_decode_TStringOnly(buf4.data, buf4.len, &s4b);
-    ASSERT_TRUE(err4 == ASON_OK);
+    asun_err_t err4 = asun_decode_TStringOnly(buf4.data, buf4.len, &s4b);
+    ASSERT_TRUE(err4 == ASUN_OK);
     ASSERT_EQ_S(s4b.val.data, "@Alice");
-    ason_buf_free(&buf4); ason_string_free(&s4.val); ason_string_free(&s4b.val);
+    asun_buf_free(&buf4); asun_string_free(&s4.val); asun_string_free(&s4b.val);
     PASS();
 }
 
 void test_floats(void) {
     TEST(floats);
     TFloats f = {3.14, -0.5, 100.0f};
-    ason_buf_t buf = ason_encode_TFloats(&f);
+    asun_buf_t buf = asun_encode_TFloats(&f);
     TFloats f2 = {0};
-    ason_err_t err = ason_decode_TFloats(buf.data, buf.len, &f2);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TFloats(buf.data, buf.len, &f2);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_NEAR(f2.a, 3.14, 0.001);
     ASSERT_NEAR(f2.b, -0.5, 0.001);
     ASSERT_NEAR(f2.c, 100.0, 0.001);
-    ason_buf_free(&buf);
+    asun_buf_free(&buf);
     PASS();
 }
 
 void test_integer_valued_float(void) {
     TEST(integer_valued_float);
     TFloats f = {42.0, 0.0, -7.0f};
-    ason_buf_t buf = ason_encode_TFloats(&f);
+    asun_buf_t buf = asun_encode_TFloats(&f);
     ASSERT_TRUE(strstr(buf.data, "42.0") != NULL);
     TFloats f2 = {0};
-    ason_err_t err = ason_decode_TFloats(buf.data, buf.len, &f2);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TFloats(buf.data, buf.len, &f2);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_NEAR(f2.a, 42.0, 0.001);
-    ason_buf_free(&buf);
+    asun_buf_free(&buf);
     PASS();
 }
 
@@ -482,14 +482,14 @@ void test_negative_numbers(void) {
     TEST(negative_numbers);
     TAllNums n = {0};
     n.i8 = -128; n.i16 = -32768; n.i32 = -2147483647-1; n.i64v = -9223372036854775807LL;
-    ason_buf_t buf = ason_encode_TAllNums(&n);
+    asun_buf_t buf = asun_encode_TAllNums(&n);
     TAllNums n2 = {0};
-    ason_err_t err = ason_decode_TAllNums(buf.data, buf.len, &n2);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TAllNums(buf.data, buf.len, &n2);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_I(n2.i8, -128);
     ASSERT_EQ_I(n2.i16, -32768);
     ASSERT_EQ_I(n2.i64v, -9223372036854775807LL);
-    ason_buf_free(&buf);
+    asun_buf_free(&buf);
     PASS();
 }
 
@@ -498,36 +498,36 @@ void test_large_unsigned(void) {
     TAllNums n = {0};
     n.u64v = 18446744073709551615ULL;
     n.u32 = 4294967295U;
-    ason_buf_t buf = ason_encode_TAllNums(&n);
+    asun_buf_t buf = asun_encode_TAllNums(&n);
     TAllNums n2 = {0};
-    ason_err_t err = ason_decode_TAllNums(buf.data, buf.len, &n2);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TAllNums(buf.data, buf.len, &n2);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_U(n2.u64v, 18446744073709551615ULL);
     ASSERT_EQ_U(n2.u32, 4294967295U);
-    ason_buf_free(&buf);
+    asun_buf_free(&buf);
     PASS();
 }
 
 void test_deep_nesting(void) {
     TEST(deep_nesting);
-    TDeepA a1 = {ason_string_from("a1"), 1};
-    TDeepA a2 = {ason_string_from("a2"), 2};
-    TDeepA b1 = {ason_string_from("b1"), 10};
+    TDeepA a1 = {asun_string_from("a1"), 1};
+    TDeepA a2 = {asun_string_from("a2"), 2};
+    TDeepA b1 = {asun_string_from("b1"), 10};
 
-    TDeepB g1 = {ason_string_from("group1"), ason_vec_TDeepA_new()};
-    ason_vec_TDeepA_push(&g1.items, a1);
-    ason_vec_TDeepA_push(&g1.items, a2);
-    TDeepB g2 = {ason_string_from("group2"), ason_vec_TDeepA_new()};
-    ason_vec_TDeepA_push(&g2.items, b1);
+    TDeepB g1 = {asun_string_from("group1"), asun_vec_TDeepA_new()};
+    asun_vec_TDeepA_push(&g1.items, a1);
+    asun_vec_TDeepA_push(&g1.items, a2);
+    TDeepB g2 = {asun_string_from("group2"), asun_vec_TDeepA_new()};
+    asun_vec_TDeepA_push(&g2.items, b1);
 
-    TDeepC c = {ason_string_from("top"), ason_vec_TDeepB_new()};
-    ason_vec_TDeepB_push(&c.groups, g1);
-    ason_vec_TDeepB_push(&c.groups, g2);
+    TDeepC c = {asun_string_from("top"), asun_vec_TDeepB_new()};
+    asun_vec_TDeepB_push(&c.groups, g1);
+    asun_vec_TDeepB_push(&c.groups, g2);
 
-    ason_buf_t buf = ason_encode_TDeepC(&c);
+    asun_buf_t buf = asun_encode_TDeepC(&c);
     TDeepC c2 = {0};
-    ason_err_t err = ason_decode_TDeepC(buf.data, buf.len, &c2);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TDeepC(buf.data, buf.len, &c2);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_S(c2.title.data, "top");
     ASSERT_EQ_U(c2.groups.len, 2u);
     ASSERT_EQ_S(c2.groups.data[0].label.data, "group1");
@@ -535,52 +535,52 @@ void test_deep_nesting(void) {
     ASSERT_EQ_S(c2.groups.data[0].items.data[1].name.data, "a2");
     ASSERT_EQ_I(c2.groups.data[1].items.data[0].val, 10);
 
-    ason_buf_free(&buf);
+    asun_buf_free(&buf);
     /* free c */
-    ason_string_free(&c.title);
+    asun_string_free(&c.title);
     for (size_t i = 0; i < c.groups.len; i++) {
-        ason_string_free(&c.groups.data[i].label);
-        for (size_t j = 0; j < c.groups.data[i].items.len; j++) ason_string_free(&c.groups.data[i].items.data[j].name);
-        ason_vec_TDeepA_free(&c.groups.data[i].items);
+        asun_string_free(&c.groups.data[i].label);
+        for (size_t j = 0; j < c.groups.data[i].items.len; j++) asun_string_free(&c.groups.data[i].items.data[j].name);
+        asun_vec_TDeepA_free(&c.groups.data[i].items);
     }
-    ason_vec_TDeepB_free(&c.groups);
+    asun_vec_TDeepB_free(&c.groups);
     /* free c2 */
-    ason_string_free(&c2.title);
+    asun_string_free(&c2.title);
     for (size_t i = 0; i < c2.groups.len; i++) {
-        ason_string_free(&c2.groups.data[i].label);
-        for (size_t j = 0; j < c2.groups.data[i].items.len; j++) ason_string_free(&c2.groups.data[i].items.data[j].name);
-        ason_vec_TDeepA_free(&c2.groups.data[i].items);
+        asun_string_free(&c2.groups.data[i].label);
+        for (size_t j = 0; j < c2.groups.data[i].items.len; j++) asun_string_free(&c2.groups.data[i].items.data[j].name);
+        asun_vec_TDeepA_free(&c2.groups.data[i].items);
     }
-    ason_vec_TDeepB_free(&c2.groups);
+    asun_vec_TDeepB_free(&c2.groups);
     PASS();
 }
 
 void test_nested_vec(void) {
     TEST(nested_vec);
     TNestedVec nv = {{0}};
-    nv.matrix = ason_vec_vec_i64_new();
-    ason_vec_i64 r1 = ason_vec_i64_new(); ason_vec_i64_push(&r1, 1); ason_vec_i64_push(&r1, 2); ason_vec_i64_push(&r1, 3);
-    ason_vec_i64 r2 = ason_vec_i64_new(); ason_vec_i64_push(&r2, 4); ason_vec_i64_push(&r2, 5);
-    ason_vec_i64 r3 = ason_vec_i64_new(); ason_vec_i64_push(&r3, 6);
-    ason_vec_vec_i64_push(&nv.matrix, r1);
-    ason_vec_vec_i64_push(&nv.matrix, r2);
-    ason_vec_vec_i64_push(&nv.matrix, r3);
+    nv.matrix = asun_vec_vec_i64_new();
+    asun_vec_i64 r1 = asun_vec_i64_new(); asun_vec_i64_push(&r1, 1); asun_vec_i64_push(&r1, 2); asun_vec_i64_push(&r1, 3);
+    asun_vec_i64 r2 = asun_vec_i64_new(); asun_vec_i64_push(&r2, 4); asun_vec_i64_push(&r2, 5);
+    asun_vec_i64 r3 = asun_vec_i64_new(); asun_vec_i64_push(&r3, 6);
+    asun_vec_vec_i64_push(&nv.matrix, r1);
+    asun_vec_vec_i64_push(&nv.matrix, r2);
+    asun_vec_vec_i64_push(&nv.matrix, r3);
 
-    ason_buf_t buf = ason_encode_TNestedVec(&nv);
+    asun_buf_t buf = asun_encode_TNestedVec(&nv);
     TNestedVec nv2 = {0};
-    ason_err_t err = ason_decode_TNestedVec(buf.data, buf.len, &nv2);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TNestedVec(buf.data, buf.len, &nv2);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_U(nv2.matrix.len, 3u);
     ASSERT_EQ_I(nv2.matrix.data[0].data[0], 1);
     ASSERT_EQ_I(nv2.matrix.data[0].data[2], 3);
     ASSERT_EQ_U(nv2.matrix.data[1].len, 2u);
     ASSERT_EQ_U(nv2.matrix.data[2].len, 1u);
 
-    ason_buf_free(&buf);
-    for (size_t i = 0; i < nv.matrix.len; i++) ason_vec_i64_free(&nv.matrix.data[i]);
-    ason_vec_vec_i64_free(&nv.matrix);
-    for (size_t i = 0; i < nv2.matrix.len; i++) ason_vec_i64_free(&nv2.matrix.data[i]);
-    ason_vec_vec_i64_free(&nv2.matrix);
+    asun_buf_free(&buf);
+    for (size_t i = 0; i < nv.matrix.len; i++) asun_vec_i64_free(&nv.matrix.data[i]);
+    asun_vec_vec_i64_free(&nv.matrix);
+    for (size_t i = 0; i < nv2.matrix.len; i++) asun_vec_i64_free(&nv2.matrix.data[i]);
+    asun_vec_vec_i64_free(&nv2.matrix);
     PASS();
 }
 
@@ -588,8 +588,8 @@ void test_comments(void) {
     TEST(comments);
     const char* input = "/* top-level comment */ {id,name,active}: /* inline */ (1,Alice,true)";
     TSimple r = {0};
-    ason_err_t err = ason_decode_TSimple(input, strlen(input), &r);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TSimple(input, strlen(input), &r);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_I(r.id, 1);
     ASSERT_EQ_S(r.name.data, "Alice");
     ASSERT_TRUE(r.active);
@@ -601,8 +601,8 @@ void test_whitespace(void) {
     TEST(whitespace);
     const char* input = "{ id , name , active } : ( 1 , Alice , true )";
     TSimple r = {0};
-    ason_err_t err = ason_decode_TSimple(input, strlen(input), &r);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TSimple(input, strlen(input), &r);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_I(r.id, 1);
     ASSERT_EQ_S(r.name.data, "Alice");
     ASSERT_TRUE(r.active);
@@ -614,8 +614,8 @@ void test_multiline(void) {
     TEST(multiline);
     const char* input = "[{id, name, active}]:\n  (1, Alice, true),\n  (2, Bob, false)";
     TSimple* vec = NULL; size_t n = 0;
-    ason_err_t err = ason_decode_vec_TSimple(input, strlen(input), &vec, &n);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_vec_TSimple(input, strlen(input), &vec, &n);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_U(n, 2u);
     ASSERT_EQ_S(vec[0].name.data, "Alice");
     ASSERT_FALSE(vec[1].active);
@@ -628,8 +628,8 @@ void test_typed_schema_parse(void) {
     TEST(typed_schema_parse);
     const char* input = "{id@int,name@str,active@bool}:(42,Hello,false)";
     TSimple r = {0};
-    ason_err_t err = ason_decode_TSimple(input, strlen(input), &r);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TSimple(input, strlen(input), &r);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_I(r.id, 42);
     ASSERT_EQ_S(r.name.data, "Hello");
     ASSERT_FALSE(r.active);
@@ -648,8 +648,8 @@ void test_reject_invalid_schema_types(void) {
         "{profile@{name@textx}}:((Alice))",
     };
     for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
-        ason_err_t err = ason_decode_TSimple(cases[i], strlen(cases[i]), &r);
-        if (err == ASON_OK) FAIL("expected alias rejection");
+        asun_err_t err = asun_decode_TSimple(cases[i], strlen(cases[i]), &r);
+        if (err == ASUN_OK) FAIL("expected alias rejection");
     }
     PASS();
 }
@@ -658,8 +658,8 @@ void test_schema_field_mismatch(void) {
     TEST(schema_field_mismatch);
     const char* input = "{id,extra_field,name,active}:(42,ignored,Hello,true)";
     TSimple r = {0};
-    ason_err_t err = ason_decode_TSimple(input, strlen(input), &r);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TSimple(input, strlen(input), &r);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_I(r.id, 42);
     ASSERT_EQ_S(r.name.data, "Hello");
     ASSERT_TRUE(r.active);
@@ -671,8 +671,8 @@ void test_unquoted_string_trim(void) {
     TEST(unquoted_string_trim);
     const char* input = "{id,name,active}:(1,  Alice  ,true)";
     TSimple r = {0};
-    ason_err_t err = ason_decode_TSimple(input, strlen(input), &r);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TSimple(input, strlen(input), &r);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_S(r.name.data, "Alice");
     free_tsimple(&r);
     PASS();
@@ -682,13 +682,13 @@ void test_bool_values(void) {
     TEST(bool_values);
     const char* input1 = "{id,name,active}:(1,A,true)";
     TSimple r1 = {0};
-    ason_decode_TSimple(input1, strlen(input1), &r1);
+    asun_decode_TSimple(input1, strlen(input1), &r1);
     ASSERT_TRUE(r1.active);
     free_tsimple(&r1);
 
     const char* input2 = "{id,name,active}:(1,A,false)";
     TSimple r2 = {0};
-    ason_decode_TSimple(input2, strlen(input2), &r2);
+    asun_decode_TSimple(input2, strlen(input2), &r2);
     ASSERT_FALSE(r2.active);
     free_tsimple(&r2);
     PASS();
@@ -698,8 +698,8 @@ void test_empty_optional_between_commas(void) {
     TEST(empty_optional_between_commas);
     const char* input = "{id,label,count}:(1,,42)";
     TWithOptional r = {0};
-    ason_err_t err = ason_decode_TWithOptional(input, strlen(input), &r);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TWithOptional(input, strlen(input), &r);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_I(r.id, 1);
     ASSERT_FALSE(r.label.has_value);
     ASSERT_TRUE(r.count.has_value);
@@ -712,8 +712,8 @@ void test_string_with_spaces(void) {
     TEST(string_with_spaces);
     const char* input = "{id,name,active}:(1,\"  spaces  \",true)";
     TSimple r = {0};
-    ason_err_t err = ason_decode_TSimple(input, strlen(input), &r);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TSimple(input, strlen(input), &r);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_S(r.name.data, "  spaces  ");
     free_tsimple(&r);
     PASS();
@@ -722,46 +722,46 @@ void test_string_with_spaces(void) {
 void test_error_handling(void) {
     TEST(error_handling);
     TSimple r = {0};
-    ason_err_t err = ason_decode_TSimple("not valid ason", 14, &r);
-    ASSERT_TRUE(err != ASON_OK);
+    asun_err_t err = asun_decode_TSimple("not valid asun", 14, &r);
+    ASSERT_TRUE(err != ASUN_OK);
     PASS();
 }
 
 void test_encode_vec_empty(void) {
     TEST(encode_vec_empty);
-    ason_buf_t buf = ason_encode_vec_TSimple(NULL, 0);
+    asun_buf_t buf = asun_encode_vec_TSimple(NULL, 0);
     ASSERT_TRUE(strstr(buf.data, "[{id,name,active}]:") != NULL);
-    ason_buf_free(&buf);
+    asun_buf_free(&buf);
     PASS();
 }
 
 void test_leading_trailing_space_quoting(void) {
     TEST(leading_trailing_space_quoting);
-    TStringOnly s1 = {ason_string_from(" leading")};
-    ason_buf_t buf1 = ason_encode_TStringOnly(&s1);
+    TStringOnly s1 = {asun_string_from(" leading")};
+    asun_buf_t buf1 = asun_encode_TStringOnly(&s1);
     ASSERT_TRUE(strstr(buf1.data, "\" leading\"") != NULL);
     TStringOnly s1b = {0};
-    ason_decode_TStringOnly(buf1.data, buf1.len, &s1b);
+    asun_decode_TStringOnly(buf1.data, buf1.len, &s1b);
     ASSERT_EQ_S(s1b.val.data, " leading");
-    ason_buf_free(&buf1); ason_string_free(&s1.val); ason_string_free(&s1b.val);
+    asun_buf_free(&buf1); asun_string_free(&s1.val); asun_string_free(&s1b.val);
 
-    TStringOnly s3 = {ason_string_from("trailing ")};
-    ason_buf_t buf3 = ason_encode_TStringOnly(&s3);
+    TStringOnly s3 = {asun_string_from("trailing ")};
+    asun_buf_t buf3 = asun_encode_TStringOnly(&s3);
     TStringOnly s4 = {0};
-    ason_decode_TStringOnly(buf3.data, buf3.len, &s4);
+    asun_decode_TStringOnly(buf3.data, buf3.len, &s4);
     ASSERT_EQ_S(s4.val.data, "trailing ");
-    ason_buf_free(&buf3); ason_string_free(&s3.val); ason_string_free(&s4.val);
+    asun_buf_free(&buf3); asun_string_free(&s3.val); asun_string_free(&s4.val);
     PASS();
 }
 
 void test_backslash_escape(void) {
     TEST(backslash_escape);
-    TStringOnly s = {ason_string_from("path\\to\\file")};
-    ason_buf_t buf = ason_encode_TStringOnly(&s);
+    TStringOnly s = {asun_string_from("path\\to\\file")};
+    asun_buf_t buf = asun_encode_TStringOnly(&s);
     TStringOnly s2 = {0};
-    ason_decode_TStringOnly(buf.data, buf.len, &s2);
+    asun_decode_TStringOnly(buf.data, buf.len, &s2);
     ASSERT_EQ_S(s2.val.data, "path\\to\\file");
-    ason_buf_free(&buf); ason_string_free(&s.val); ason_string_free(&s2.val);
+    asun_buf_free(&buf); asun_string_free(&s.val); asun_string_free(&s2.val);
     PASS();
 }
 
@@ -773,20 +773,20 @@ static const char* BAD_FMT  = "{id,name}:\n  (1,Alice),\n  (2,Bob),\n  (3,Carol)
 static const char* GOOD_FMT = "[{id,name}]:\n  (1,Alice),\n  (2,Bob),\n  (3,Carol)";
 
 /* TFmtRow shares the same layout as TSimple-minus-active; use TSimple */
-typedef struct { int64_t id; ason_string_t name; } TFmtRow;
-ASON_FIELDS(TFmtRow, 2,
-    ASON_FIELD(TFmtRow, id,   "id",   i64),
-    ASON_FIELD(TFmtRow, name, "name", str))
-ASON_FIELDS_BIN(TFmtRow, 2)
+typedef struct { int64_t id; asun_string_t name; } TFmtRow;
+ASUN_FIELDS(TFmtRow, 2,
+    ASUN_FIELD(TFmtRow, id,   "id",   i64),
+    ASUN_FIELD(TFmtRow, name, "name", str))
+ASUN_FIELDS_BIN(TFmtRow, 2)
 
-static void free_tfmtrow(TFmtRow* r) { ason_string_free(&r->name); }
+static void free_tfmtrow(TFmtRow* r) { asun_string_free(&r->name); }
 
 void test_bad_format_as_vec(void) {
     TEST(bad_format_as_vec);
     TFmtRow* rows = NULL;
     size_t count = 0;
-    ason_err_t err = ason_decode_vec_TFmtRow(BAD_FMT, strlen(BAD_FMT), &rows, &count);
-    if (err == ASON_OK) {
+    asun_err_t err = asun_decode_vec_TFmtRow(BAD_FMT, strlen(BAD_FMT), &rows, &count);
+    if (err == ASUN_OK) {
         for (size_t i = 0; i < count; i++) free_tfmtrow(&rows[i]);
         free(rows);
         FAIL("should reject {schema}: format for vec");
@@ -798,9 +798,9 @@ void test_bad_format_trailing_rows(void) {
     /* {schema}:(row1),(row2),... — single decode should fail on trailing content */
     TEST(bad_format_trailing_rows);
     TFmtRow r = {0};
-    ason_err_t err = ason_decode_TFmtRow(BAD_FMT, strlen(BAD_FMT), &r);
-    if (r.name.data) ason_string_free(&r.name);
-    if (err == ASON_OK) {
+    asun_err_t err = asun_decode_TFmtRow(BAD_FMT, strlen(BAD_FMT), &r);
+    if (r.name.data) asun_string_free(&r.name);
+    if (err == ASUN_OK) {
         FAIL("should reject trailing tuples after single struct decode");
     }
     PASS();
@@ -810,8 +810,8 @@ void test_good_format_as_vec(void) {
     TEST(good_format_as_vec);
     TFmtRow* rows = NULL;
     size_t count = 0;
-    ason_err_t err = ason_decode_vec_TFmtRow(GOOD_FMT, strlen(GOOD_FMT), &rows, &count);
-    if (err != ASON_OK) { FAIL("should accept [{schema}]: format for vec"); }
+    asun_err_t err = asun_decode_vec_TFmtRow(GOOD_FMT, strlen(GOOD_FMT), &rows, &count);
+    if (err != ASUN_OK) { FAIL("should accept [{schema}]: format for vec"); }
     if (count != 3) {
         for (size_t i = 0; i < count; i++) free_tfmtrow(&rows[i]);
         free(rows);
@@ -830,9 +830,9 @@ void test_bad_format_extra_tuples(void) {
     TEST(bad_format_extra_tuples);
     const char* bad = "{id,name}:(10,Dave),(11,Eve)";
     TFmtRow r = {0};
-    ason_err_t err = ason_decode_TFmtRow(bad, strlen(bad), &r);
-    if (r.name.data) ason_string_free(&r.name);
-    if (err == ASON_OK) { FAIL("should reject trailing tuple"); }
+    asun_err_t err = asun_decode_TFmtRow(bad, strlen(bad), &r);
+    if (r.name.data) asun_string_free(&r.name);
+    if (err == ASUN_OK) { FAIL("should reject trailing tuple"); }
     PASS();
 }
 
@@ -841,8 +841,8 @@ void test_good_format_single(void) {
     TEST(good_format_single);
     const char* good = "{id,name}:(1,Alice)";
     TFmtRow r = {0};
-    ason_err_t err = ason_decode_TFmtRow(good, strlen(good), &r);
-    if (err != ASON_OK) { FAIL("should accept single struct with one tuple"); }
+    asun_err_t err = asun_decode_TFmtRow(good, strlen(good), &r);
+    if (err != ASUN_OK) { FAIL("should accept single struct with one tuple"); }
     ASSERT_EQ_I(r.id, 1);
     ASSERT_EQ_S(r.name.data, "Alice");
     free_tfmtrow(&r);
@@ -855,8 +855,8 @@ void test_good_format_vec_single(void) {
     const char* good = "[{id,name}]:(1,Alice)";
     TFmtRow* rows = NULL;
     size_t count = 0;
-    ason_err_t err = ason_decode_vec_TFmtRow(good, strlen(good), &rows, &count);
-    if (err != ASON_OK) { FAIL("should accept [{schema}]: with single tuple"); }
+    asun_err_t err = asun_decode_vec_TFmtRow(good, strlen(good), &rows, &count);
+    if (err != ASUN_OK) { FAIL("should accept [{schema}]: with single tuple"); }
     if (count != 1) {
         for (size_t i = 0; i < count; i++) free_tfmtrow(&rows[i]);
         free(rows);
@@ -875,13 +875,13 @@ void test_good_format_vec_single(void) {
 
 void test_pretty_simple_roundtrip(void) {
     TEST(pretty_simple_roundtrip);
-    TSimple s1 = {42, ason_string_from("Alice"), true};
-    ason_buf_t pretty = ason_encode_pretty_TSimple(&s1);
+    TSimple s1 = {42, asun_string_from("Alice"), true};
+    asun_buf_t pretty = asun_encode_pretty_TSimple(&s1);
     TSimple s2 = {0};
-    ason_err_t err = ason_decode_TSimple(pretty.data, pretty.len, &s2);
-    ason_buf_free(&pretty);
-    ason_string_free(&s1.name);
-    if (err != ASON_OK) { FAIL("pretty output not decodable"); }
+    asun_err_t err = asun_decode_TSimple(pretty.data, pretty.len, &s2);
+    asun_buf_free(&pretty);
+    asun_string_free(&s1.name);
+    if (err != ASUN_OK) { FAIL("pretty output not decodable"); }
     ASSERT_EQ_I(s2.id, 42);
     ASSERT_EQ_S(s2.name.data, "Alice");
     ASSERT_TRUE(s2.active);
@@ -891,15 +891,15 @@ void test_pretty_simple_roundtrip(void) {
 
 void test_pretty_typed_roundtrip(void) {
     TEST(pretty_typed_roundtrip);
-    TSimple s1 = {7, ason_string_from("Bob"), false};
-    ason_buf_t pretty = ason_encode_pretty_typed_TSimple(&s1);
+    TSimple s1 = {7, asun_string_from("Bob"), false};
+    asun_buf_t pretty = asun_encode_pretty_typed_TSimple(&s1);
     /* typed output should contain type annotations */
     ASSERT_TRUE(strstr(pretty.data, "int") != NULL || strstr(pretty.data, "str") != NULL);
     TSimple s2 = {0};
-    ason_err_t err = ason_decode_TSimple(pretty.data, pretty.len, &s2);
-    ason_buf_free(&pretty);
-    ason_string_free(&s1.name);
-    if (err != ASON_OK) { FAIL("typed pretty output not decodable"); }
+    asun_err_t err = asun_decode_TSimple(pretty.data, pretty.len, &s2);
+    asun_buf_free(&pretty);
+    asun_string_free(&s1.name);
+    if (err != ASUN_OK) { FAIL("typed pretty output not decodable"); }
     ASSERT_EQ_I(s2.id, 7);
     ASSERT_EQ_S(s2.name.data, "Bob");
     ASSERT_FALSE(s2.active);
@@ -910,18 +910,18 @@ void test_pretty_typed_roundtrip(void) {
 void test_pretty_vec_roundtrip(void) {
     TEST(pretty_vec_roundtrip);
     TSimple arr[3] = {
-        {1, ason_string_from("A"), true},
-        {2, ason_string_from("B"), false},
-        {3, ason_string_from("C"), true},
+        {1, asun_string_from("A"), true},
+        {2, asun_string_from("B"), false},
+        {3, asun_string_from("C"), true},
     };
-    ason_buf_t pretty = ason_encode_pretty_vec_TSimple(arr, 3);
+    asun_buf_t pretty = asun_encode_pretty_vec_TSimple(arr, 3);
     ASSERT_TRUE(strchr(pretty.data, '\n') != NULL);
     TSimple* out = NULL;
     size_t cnt = 0;
-    ason_err_t err = ason_decode_vec_TSimple(pretty.data, pretty.len, &out, &cnt);
-    ason_buf_free(&pretty);
-    for (int i = 0; i < 3; i++) ason_string_free(&arr[i].name);
-    if (err != ASON_OK) { FAIL("pretty vec output not decodable"); }
+    asun_err_t err = asun_decode_vec_TSimple(pretty.data, pretty.len, &out, &cnt);
+    asun_buf_free(&pretty);
+    for (int i = 0; i < 3; i++) asun_string_free(&arr[i].name);
+    if (err != ASUN_OK) { FAIL("pretty vec output not decodable"); }
     ASSERT_EQ_I((int64_t)cnt, 3);
     ASSERT_EQ_I(out[0].id, 1);
     ASSERT_EQ_S(out[0].name.data, "A");
@@ -933,13 +933,13 @@ void test_pretty_vec_roundtrip(void) {
 
 void test_pretty_nested_roundtrip(void) {
     TEST(pretty_nested_roundtrip);
-    TOuter o = {ason_string_from("hello"), {ason_string_from("world"), 42}};
-    ason_buf_t pretty = ason_encode_pretty_TOuter(&o);
+    TOuter o = {asun_string_from("hello"), {asun_string_from("world"), 42}};
+    asun_buf_t pretty = asun_encode_pretty_TOuter(&o);
     TOuter o2 = {0};
-    ason_err_t err = ason_decode_TOuter(pretty.data, pretty.len, &o2);
-    ason_buf_free(&pretty);
+    asun_err_t err = asun_decode_TOuter(pretty.data, pretty.len, &o2);
+    asun_buf_free(&pretty);
     free_touter(&o);
-    if (err != ASON_OK) { FAIL("pretty nested output not decodable"); }
+    if (err != ASUN_OK) { FAIL("pretty nested output not decodable"); }
     ASSERT_EQ_S(o2.label.data, "hello");
     ASSERT_EQ_S(o2.inner.val.data, "world");
     ASSERT_EQ_I(o2.inner.n, 42);
@@ -953,13 +953,13 @@ void test_pretty_nested_roundtrip(void) {
 
 void test_binary_single_roundtrip(void) {
     TEST(binary_single_roundtrip);
-    TFmtRow s1 = {99, ason_string_from("Zara")};
-    ason_buf_t bin = ason_encode_bin_TFmtRow(&s1);
+    TFmtRow s1 = {99, asun_string_from("Zara")};
+    asun_buf_t bin = asun_encode_bin_TFmtRow(&s1);
     TFmtRow s2 = {0};
-    ason_err_t err = ason_decode_bin_TFmtRow(bin.data, bin.len, &s2);
-    ason_buf_free(&bin);
+    asun_err_t err = asun_decode_bin_TFmtRow(bin.data, bin.len, &s2);
+    asun_buf_free(&bin);
     free_tfmtrow(&s1);
-    if (err != ASON_OK) { FAIL("binary decode failed"); }
+    if (err != ASUN_OK) { FAIL("binary decode failed"); }
     ASSERT_EQ_I(s2.id, 99);
     ASSERT_EQ_S(s2.name.data, "Zara");
     free_tfmtrow(&s2);
@@ -969,17 +969,17 @@ void test_binary_single_roundtrip(void) {
 void test_binary_vec_roundtrip(void) {
     TEST(binary_vec_roundtrip);
     TFmtRow arr[3] = {
-        {1, ason_string_from("Alice")},
-        {2, ason_string_from("Bob")},
-        {3, ason_string_from("Carol")},
+        {1, asun_string_from("Alice")},
+        {2, asun_string_from("Bob")},
+        {3, asun_string_from("Carol")},
     };
-    ason_buf_t bin = ason_encode_bin_vec_TFmtRow(arr, 3);
+    asun_buf_t bin = asun_encode_bin_vec_TFmtRow(arr, 3);
     TFmtRow* out = NULL;
     size_t cnt = 0;
-    ason_err_t err = ason_decode_bin_vec_TFmtRow(bin.data, bin.len, &out, &cnt);
-    ason_buf_free(&bin);
+    asun_err_t err = asun_decode_bin_vec_TFmtRow(bin.data, bin.len, &out, &cnt);
+    asun_buf_free(&bin);
     for (int i = 0; i < 3; i++) free_tfmtrow(&arr[i]);
-    if (err != ASON_OK) { FAIL("binary vec decode failed"); }
+    if (err != ASUN_OK) { FAIL("binary vec decode failed"); }
     ASSERT_EQ_I((int64_t)cnt, 3);
     ASSERT_EQ_I(out[0].id, 1);
     ASSERT_EQ_S(out[0].name.data, "Alice");
@@ -997,91 +997,91 @@ void test_binary_vec_roundtrip(void) {
 void test_encode_typed_bool_vec_field(void) {
     TEST(encode_typed_bool_vec_field);
     TWithBoolVec w = {0};
-    ason_vec_bool_push(&w.flags, true);
-    ason_vec_bool_push(&w.flags, false);
-    ason_vec_bool_push(&w.flags, true);
-    ason_buf_t buf = ason_encode_typed_TWithBoolVec(&w);
+    asun_vec_bool_push(&w.flags, true);
+    asun_vec_bool_push(&w.flags, false);
+    asun_vec_bool_push(&w.flags, true);
+    asun_buf_t buf = asun_encode_typed_TWithBoolVec(&w);
     ASSERT_TRUE(strstr(buf.data, "flags@[bool]") != NULL);
     TWithBoolVec w2 = {0};
-    ason_err_t err = ason_decode_TWithBoolVec(buf.data, buf.len, &w2);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TWithBoolVec(buf.data, buf.len, &w2);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_U(w2.flags.len, 3u);
     ASSERT_TRUE(w2.flags.data[0]);
     ASSERT_FALSE(w2.flags.data[1]);
     ASSERT_TRUE(w2.flags.data[2]);
-    ason_buf_free(&buf);
-    ason_vec_bool_free(&w.flags);
-    ason_vec_bool_free(&w2.flags);
+    asun_buf_free(&buf);
+    asun_vec_bool_free(&w.flags);
+    asun_vec_bool_free(&w2.flags);
     PASS();
 }
 
 void test_encode_typed_int_vec_field(void) {
     TEST(encode_typed_int_vec_field);
     TWithIntVec w = {0};
-    ason_vec_i64_push(&w.nums, 10);
-    ason_vec_i64_push(&w.nums, 20);
-    ason_vec_i64_push(&w.nums, 30);
-    ason_buf_t buf = ason_encode_typed_TWithIntVec(&w);
+    asun_vec_i64_push(&w.nums, 10);
+    asun_vec_i64_push(&w.nums, 20);
+    asun_vec_i64_push(&w.nums, 30);
+    asun_buf_t buf = asun_encode_typed_TWithIntVec(&w);
     ASSERT_TRUE(strstr(buf.data, "nums@[int]") != NULL);
     TWithIntVec w2 = {0};
-    ason_err_t err = ason_decode_TWithIntVec(buf.data, buf.len, &w2);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TWithIntVec(buf.data, buf.len, &w2);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_U(w2.nums.len, 3u);
     ASSERT_EQ_I(w2.nums.data[0], 10);
     ASSERT_EQ_I(w2.nums.data[2], 30);
-    ason_buf_free(&buf);
-    ason_vec_i64_free(&w.nums);
-    ason_vec_i64_free(&w2.nums);
+    asun_buf_free(&buf);
+    asun_vec_i64_free(&w.nums);
+    asun_vec_i64_free(&w2.nums);
     PASS();
 }
 
 void test_encode_typed_str_vec_field(void) {
     TEST(encode_typed_str_vec_field);
     TWithStrVec w = {0};
-    ason_vec_str_push(&w.tags, ason_string_from("a"));
-    ason_vec_str_push(&w.tags, ason_string_from("b"));
-    ason_buf_t buf = ason_encode_typed_TWithStrVec(&w);
+    asun_vec_str_push(&w.tags, asun_string_from("a"));
+    asun_vec_str_push(&w.tags, asun_string_from("b"));
+    asun_buf_t buf = asun_encode_typed_TWithStrVec(&w);
     ASSERT_TRUE(strstr(buf.data, "tags@[str]") != NULL);
     TWithStrVec w2 = {0};
-    ason_err_t err = ason_decode_TWithStrVec(buf.data, buf.len, &w2);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TWithStrVec(buf.data, buf.len, &w2);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_U(w2.tags.len, 2u);
     ASSERT_EQ_S(w2.tags.data[0].data, "a");
     ASSERT_EQ_S(w2.tags.data[1].data, "b");
-    ason_buf_free(&buf);
-    for (size_t i = 0; i < w.tags.len; i++) ason_string_free(&w.tags.data[i]);
-    ason_vec_str_free(&w.tags);
-    for (size_t i = 0; i < w2.tags.len; i++) ason_string_free(&w2.tags.data[i]);
-    ason_vec_str_free(&w2.tags);
+    asun_buf_free(&buf);
+    for (size_t i = 0; i < w.tags.len; i++) asun_string_free(&w.tags.data[i]);
+    asun_vec_str_free(&w.tags);
+    for (size_t i = 0; i < w2.tags.len; i++) asun_string_free(&w2.tags.data[i]);
+    asun_vec_str_free(&w2.tags);
     PASS();
 }
 
 void test_encode_typed_empty_bool_vec(void) {
     TEST(encode_typed_empty_bool_vec);
     TWithBoolVec w = {0};
-    ason_buf_t buf = ason_encode_typed_TWithBoolVec(&w);
+    asun_buf_t buf = asun_encode_typed_TWithBoolVec(&w);
     ASSERT_TRUE(strstr(buf.data, "flags@[bool]") != NULL);
     ASSERT_TRUE(strstr(buf.data, "[]") != NULL);
-    ason_buf_free(&buf);
+    asun_buf_free(&buf);
     PASS();
 }
 
 void test_encode_pretty_typed_bool_vec_field(void) {
     TEST(encode_pretty_typed_bool_vec_field);
     TWithBoolVec w = {0};
-    ason_vec_bool_push(&w.flags, true);
-    ason_vec_bool_push(&w.flags, false);
-    ason_buf_t buf = ason_encode_pretty_typed_TWithBoolVec(&w);
+    asun_vec_bool_push(&w.flags, true);
+    asun_vec_bool_push(&w.flags, false);
+    asun_buf_t buf = asun_encode_pretty_typed_TWithBoolVec(&w);
     ASSERT_TRUE(strstr(buf.data, "bool") != NULL);
     TWithBoolVec w2 = {0};
-    ason_err_t err = ason_decode_TWithBoolVec(buf.data, buf.len, &w2);
-    ASSERT_TRUE(err == ASON_OK);
+    asun_err_t err = asun_decode_TWithBoolVec(buf.data, buf.len, &w2);
+    ASSERT_TRUE(err == ASUN_OK);
     ASSERT_EQ_U(w2.flags.len, 2u);
     ASSERT_TRUE(w2.flags.data[0]);
     ASSERT_FALSE(w2.flags.data[1]);
-    ason_buf_free(&buf);
-    ason_vec_bool_free(&w.flags);
-    ason_vec_bool_free(&w2.flags);
+    asun_buf_free(&buf);
+    asun_vec_bool_free(&w.flags);
+    asun_vec_bool_free(&w2.flags);
     PASS();
 }
 
@@ -1090,7 +1090,7 @@ void test_encode_pretty_typed_bool_vec_field(void) {
  * =========================================================================== */
 
 int main(void) {
-    printf("=== ASON C Test Suite ===\n\n");
+    printf("=== ASUN C Test Suite ===\n\n");
 
     printf("--- Serialization/Deserialization ---\n");
     test_simple_roundtrip();

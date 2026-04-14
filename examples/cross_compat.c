@@ -1,4 +1,4 @@
-#include "ason.h"
+#include "asun.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -8,44 +8,44 @@
 // ----------------------------------------------------------------------------
 typedef struct {
   int64_t id;
-  ason_string_t name;
+  asun_string_t name;
   int32_t age;
   bool gender;
 } Detail;
 
-ASON_FIELDS(Detail, 4, ASON_FIELD(Detail, id, "ID", i64),
-            ASON_FIELD(Detail, name, "Name", str),
-            ASON_FIELD(Detail, age, "Age", i32),
-            ASON_FIELD(Detail, gender, "Gender", bool))
+ASUN_FIELDS(Detail, 4, ASUN_FIELD(Detail, id, "ID", i64),
+            ASUN_FIELD(Detail, name, "Name", str),
+            ASUN_FIELD(Detail, age, "Age", i32),
+            ASUN_FIELD(Detail, gender, "Gender", bool))
 
-ASON_VEC_STRUCT_DEFINE(Detail)
+ASUN_VEC_STRUCT_DEFINE(Detail)
 
 typedef struct {
-  ason_vec_Detail details;
+  asun_vec_Detail details;
 } User;
 
-ASON_FIELDS(User, 1, ASON_FIELD_VEC_STRUCT(User, details, "details", Detail))
+ASUN_FIELDS(User, 1, ASUN_FIELD_VEC_STRUCT(User, details, "details", Detail))
 
 // ----------------------------------------------------------------------------
 // Consumption structures
 // ----------------------------------------------------------------------------
 typedef struct {
   int64_t id;
-  ason_string_t name;
+  asun_string_t name;
   int32_t age;
 } Person;
 
-ASON_FIELDS(Person, 3, ASON_FIELD(Person, id, "ID", i64),
-            ASON_FIELD(Person, name, "Name", str),
-            ASON_FIELD(Person, age, "Age", i32))
+ASUN_FIELDS(Person, 3, ASUN_FIELD(Person, id, "ID", i64),
+            ASUN_FIELD(Person, name, "Name", str),
+            ASUN_FIELD(Person, age, "Age", i32))
 
-ASON_VEC_STRUCT_DEFINE(Person)
+ASUN_VEC_STRUCT_DEFINE(Person)
 
 typedef struct {
-  ason_vec_Person details;
+  asun_vec_Person details;
 } Human;
 
-ASON_FIELDS(Human, 1, ASON_FIELD_VEC_STRUCT(Human, details, "details", Person))
+ASUN_FIELDS(Human, 1, ASUN_FIELD_VEC_STRUCT(Human, details, "details", Person))
 
 // ----------------------------------------------------------------------------
 // Main
@@ -53,25 +53,25 @@ ASON_FIELDS(Human, 1, ASON_FIELD_VEC_STRUCT(Human, details, "details", Person))
 int main(void) {
   // 1. Setup User data
   User u = {0};
-  u.details = ason_vec_Detail_new();
+  u.details = asun_vec_Detail_new();
 
-  Detail d1 = {1, ason_string_from("Alice"), 30, true};
-  Detail d2 = {2, ason_string_from("Bob"), 25, false};
+  Detail d1 = {1, asun_string_from("Alice"), 30, true};
+  Detail d2 = {2, asun_string_from("Bob"), 25, false};
 
-  ason_vec_Detail_push(&u.details, d1);
-  ason_vec_Detail_push(&u.details, d2);
+  asun_vec_Detail_push(&u.details, d1);
+  asun_vec_Detail_push(&u.details, d2);
 
   User users[1] = {u};
 
   // 2. Encode
-  ason_buf_t buf = ason_encode_vec_User(users, 1);
-  printf("Encoded ASON:\n%.*s\n", (int)buf.len, buf.data);
+  asun_buf_t buf = asun_encode_vec_User(users, 1);
+  printf("Encoded ASUN:\n%.*s\n", (int)buf.len, buf.data);
 
   // 3. Decode into Human list
   Human *humans = NULL;
   size_t count = 0;
-  ason_err_t err = ason_decode_vec_Human(buf.data, buf.len, &humans, &count);
-  assert(err == ASON_OK);
+  asun_err_t err = asun_decode_vec_Human(buf.data, buf.len, &humans, &count);
+  assert(err == ASUN_OK);
 
   printf("\nDecoded into Human list:\n");
   for (size_t i = 0; i < count; i++) {
@@ -88,18 +88,18 @@ int main(void) {
   }
 
   // Cleanup
-  ason_buf_free(&buf);
+  asun_buf_free(&buf);
   for (size_t i = 0; i < count; i++) {
     for (size_t j = 0; j < humans[i].details.len; j++) {
-      ason_string_free(&humans[i].details.data[j].name);
+      asun_string_free(&humans[i].details.data[j].name);
     }
-    ason_vec_Person_free(&humans[i].details);
+    asun_vec_Person_free(&humans[i].details);
   }
   free(humans);
 
-  ason_string_free(&d1.name);
-  ason_string_free(&d2.name);
-  ason_vec_Detail_free(&u.details);
+  asun_string_free(&d1.name);
+  asun_string_free(&d2.name);
+  asun_vec_Detail_free(&u.details);
 
   return 0;
 }

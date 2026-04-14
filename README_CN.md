@@ -1,15 +1,15 @@
-# ason-c
+# asun-c
 
 [![C11](https://img.shields.io/badge/C-11-blue.svg)](https://en.cppreference.com/w/c/11)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-面向 [ASON](https://github.com/ason-lab/ason) 的高性能 C11 实现。ASON 是一种 Schema 驱动的数据格式，适合把重复对象压缩成更紧凑的结构化载荷。
+面向 [ASUN](https://github.com/asun-lab/asun) 的高性能 C11 实现。ASUN 是一种 Schema 驱动的数据格式，适合把重复对象压缩成更紧凑的结构化载荷。
 
 [English](README.md)
 
-## 为什么用 ASON
+## 为什么用 ASUN
 
-ASON 只写一次 Schema，后续每一行只保留值：
+ASUN 只写一次 Schema，后续每一行只保留值：
 
 ```json
 [
@@ -29,90 +29,90 @@ ASON 只写一次 Schema，后续每一行只保留值：
 - 纯 C11，无第三方依赖
 - SIMD 优化解析，带标量回退
 - 文本解析尽量零拷贝
-- 同时支持 ASON 文本和紧凑二进制格式
+- 同时支持 ASUN 文本和紧凑二进制格式
 - 支持字符串、数字、布尔、可选字段、数组、嵌套结构体、结构体数组
-- 键值风格数据请通过普通结构体数组来建模，使用 `ASON_FIELD_VEC_STRUCT(...)`
+- 键值风格数据请通过普通结构体数组来建模，使用 `ASUN_FIELD_VEC_STRUCT(...)`
 
 ## 快速开始
 
-把 `include/ason.h` 和 `src/ason.c` 放进项目后，先用当前宏定义 Schema：
+把 `include/asun.h` 和 `src/asun.c` 放进项目后，先用当前宏定义 Schema：
 
 ```c
-#include "ason.h"
+#include "asun.h"
 
 typedef struct {
     int64_t id;
-    ason_string_t name;
+    asun_string_t name;
     bool active;
 } User;
 
-ASON_FIELDS(User, 3,
-    ASON_FIELD(User, id,     "id",     i64),
-    ASON_FIELD(User, name,   "name",   str),
-    ASON_FIELD(User, active, "active", bool))
-ASON_FIELDS_BIN(User, 3)
+ASUN_FIELDS(User, 3,
+    ASUN_FIELD(User, id,     "id",     i64),
+    ASUN_FIELD(User, name,   "name",   str),
+    ASUN_FIELD(User, active, "active", bool))
+ASUN_FIELDS_BIN(User, 3)
 ```
 
 ### 编码和解码单个结构体
 
 ```c
-User user = {1, ason_string_from("Alice"), true};
+User user = {1, asun_string_from("Alice"), true};
 
-ason_buf_t text = ason_encode_User(&user);
+asun_buf_t text = asun_encode_User(&user);
 // {id,name,active}:(1,Alice,true)
 
-ason_buf_t typed = ason_encode_typed_User(&user);
+asun_buf_t typed = asun_encode_typed_User(&user);
 // {id@int,name@str,active@bool}:(1,Alice,true)
 
 User decoded = {0};
-ason_err_t err = ason_decode_User(text.data, text.len, &decoded);
-assert(err == ASON_OK);
+asun_err_t err = asun_decode_User(text.data, text.len, &decoded);
+assert(err == ASUN_OK);
 
-ason_buf_free(&text);
-ason_buf_free(&typed);
-ason_string_free(&user.name);
-ason_string_free(&decoded.name);
+asun_buf_free(&text);
+asun_buf_free(&typed);
+asun_string_free(&user.name);
+asun_string_free(&decoded.name);
 ```
 
 ### 编码和解码结构体数组
 
 ```c
 User users[2] = {
-    {1, ason_string_from("Alice"), true},
-    {2, ason_string_from("Bob"), false},
+    {1, asun_string_from("Alice"), true},
+    {2, asun_string_from("Bob"), false},
 };
 
-ason_buf_t text = ason_encode_vec_User(users, 2);
+asun_buf_t text = asun_encode_vec_User(users, 2);
 // [{id,name,active}]:(1,Alice,true),(2,Bob,false)
 
 User *decoded = NULL;
 size_t count = 0;
-ason_err_t err = ason_decode_vec_User(text.data, text.len, &decoded, &count);
-assert(err == ASON_OK && count == 2);
+asun_err_t err = asun_decode_vec_User(text.data, text.len, &decoded, &count);
+assert(err == ASUN_OK && count == 2);
 ```
 
 ### 二进制往返
 
 ```c
-ason_buf_t bin = ason_encode_bin_User(&user);
+asun_buf_t bin = asun_encode_bin_User(&user);
 
 User decoded = {0};
-ason_err_t err = ason_decode_bin_User(bin.data, bin.len, &decoded);
-assert(err == ASON_OK);
+asun_err_t err = asun_decode_bin_User(bin.data, bin.len, &decoded);
+assert(err == ASUN_OK);
 ```
 
 ## 当前 API
 
 | 函数组                                          | 作用                 |
 | ----------------------------------------------- | -------------------- |
-| `ason_encode_T` / `ason_encode_typed_T`         | 编码单个结构体到文本 |
-| `ason_decode_T`                                 | 从文本解码单个结构体 |
-| `ason_encode_vec_T` / `ason_encode_typed_vec_T` | 编码结构体数组到文本 |
-| `ason_decode_vec_T`                             | 从文本解码结构体数组 |
-| `ason_encode_bin_T` / `ason_encode_bin_vec_T`   | 编码到二进制         |
-| `ason_decode_bin_T` / `ason_decode_bin_vec_T`   | 从二进制解码         |
+| `asun_encode_T` / `asun_encode_typed_T`         | 编码单个结构体到文本 |
+| `asun_decode_T`                                 | 从文本解码单个结构体 |
+| `asun_encode_vec_T` / `asun_encode_typed_vec_T` | 编码结构体数组到文本 |
+| `asun_decode_vec_T`                             | 从文本解码结构体数组 |
+| `asun_encode_bin_T` / `asun_encode_bin_vec_T`   | 编码到二进制         |
+| `asun_decode_bin_T` / `asun_decode_bin_vec_T`   | 从二进制解码         |
 
-其中 `T` 来自你的 `ASON_FIELDS(...)` 声明。
+其中 `T` 来自你的 `ASUN_FIELDS(...)` 声明。
 
 ## 运行示例
 
@@ -135,12 +135,12 @@ ctest --test-dir build
 
 关键结果：
 
-- 扁平 1,000 条记录：ASON 文本序列化 `37.91ms`，JSON `49.94ms`；反序列化 ASON `89.72ms`，JSON `264.03ms`
-- 吞吐总结：ASON 文本序列化比 JSON 快 `1.61x`，反序列化快 `1.86x`
-- 1,000 条扁平记录体积：JSON `121,675 B`，ASON 文本 `56,718 B`（缩小 `53%`），ASON 二进制 `74,454 B`（缩小 `39%`）
+- 扁平 1,000 条记录：ASUN 文本序列化 `37.91ms`，JSON `49.94ms`；反序列化 ASUN `89.72ms`，JSON `264.03ms`
+- 吞吐总结：ASUN 文本序列化比 JSON 快 `1.61x`，反序列化快 `1.86x`
+- 1,000 条扁平记录体积：JSON `121,675 B`，ASUN 文本 `56,718 B`（缩小 `53%`），ASUN 二进制 `74,454 B`（缩小 `39%`）
 - 二进制路径是这轮测试里最快的：在 1,000 条扁平记录上，序列化比 JSON 快 `6.31x`，反序列化快 `7.52x`
 
-对于 100 条五层嵌套 company 数据，ASON 文本反序列化比 JSON 快 `3.10x`，文本体积缩小 `61%`。
+对于 100 条五层嵌套 company 数据，ASUN 文本反序列化比 JSON 快 `3.10x`，文本体积缩小 `61%`。
 
 ## 说明
 

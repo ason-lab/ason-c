@@ -1,0 +1,1215 @@
+/*
+ * ASUN - A Schema-Oriented Notation (C Implementation)
+ * Field dump/load function implementations.
+ */
+
+#include "asun.h"
+
+/* ============================================================================
+ * Dump functions
+ * ============================================================================ */
+
+void asun_encode_bool(asun_buf_t* buf, const void* base, size_t offset) {
+    bool v = *(const bool*)((const char*)base + offset);
+    asun_buf_appends(buf, v ? "true" : "false");
+}
+
+void asun_encode_i8(asun_buf_t* buf, const void* base, size_t offset) {
+    asun_buf_append_i64(buf, (int64_t)*(const int8_t*)((const char*)base + offset));
+}
+
+void asun_encode_i16(asun_buf_t* buf, const void* base, size_t offset) {
+    asun_buf_append_i64(buf, (int64_t)*(const int16_t*)((const char*)base + offset));
+}
+
+void asun_encode_i32(asun_buf_t* buf, const void* base, size_t offset) {
+    asun_buf_append_i64(buf, (int64_t)*(const int32_t*)((const char*)base + offset));
+}
+
+void asun_encode_i64(asun_buf_t* buf, const void* base, size_t offset) {
+    asun_buf_append_i64(buf, *(const int64_t*)((const char*)base + offset));
+}
+
+void asun_encode_u8(asun_buf_t* buf, const void* base, size_t offset) {
+    asun_buf_append_u64(buf, (uint64_t)*(const uint8_t*)((const char*)base + offset));
+}
+
+void asun_encode_u16(asun_buf_t* buf, const void* base, size_t offset) {
+    asun_buf_append_u64(buf, (uint64_t)*(const uint16_t*)((const char*)base + offset));
+}
+
+void asun_encode_u32(asun_buf_t* buf, const void* base, size_t offset) {
+    asun_buf_append_u64(buf, (uint64_t)*(const uint32_t*)((const char*)base + offset));
+}
+
+void asun_encode_u64(asun_buf_t* buf, const void* base, size_t offset) {
+    asun_buf_append_u64(buf, *(const uint64_t*)((const char*)base + offset));
+}
+
+void asun_encode_f32(asun_buf_t* buf, const void* base, size_t offset) {
+    asun_buf_append_f64(buf, (double)*(const float*)((const char*)base + offset));
+}
+
+void asun_encode_f64(asun_buf_t* buf, const void* base, size_t offset) {
+    asun_buf_append_f64(buf, *(const double*)((const char*)base + offset));
+}
+
+void asun_encode_char(asun_buf_t* buf, const void* base, size_t offset) {
+    char c = *(const char*)((const char*)base + offset);
+    if (c == '\0') { return; }
+    char s[2] = {c, '\0'};
+    asun_buf_append_str(buf, s, 1);
+}
+
+void asun_encode_str(asun_buf_t* buf, const void* base, size_t offset) {
+    const asun_string_t* s = (const asun_string_t*)((const char*)base + offset);
+    if (!s->data || s->len == 0) { return; }
+    asun_buf_append_str(buf, s->data, s->len);
+}
+
+void asun_encode_opt_i64(asun_buf_t* buf, const void* base, size_t offset) {
+    const asun_opt_i64* opt = (const asun_opt_i64*)((const char*)base + offset);
+    if (opt->has_value) {
+        asun_buf_append_i64(buf, opt->value);
+    }
+    /* Empty = no output (will show as ,, in tuple) */
+}
+
+void asun_encode_opt_str(asun_buf_t* buf, const void* base, size_t offset) {
+    const asun_opt_str* opt = (const asun_opt_str*)((const char*)base + offset);
+    if (opt->has_value && opt->value.data) {
+        asun_buf_append_str(buf, opt->value.data, opt->value.len);
+    }
+}
+
+void asun_encode_opt_f64(asun_buf_t* buf, const void* base, size_t offset) {
+    const asun_opt_f64* opt = (const asun_opt_f64*)((const char*)base + offset);
+    if (opt->has_value) {
+        asun_buf_append_f64(buf, opt->value);
+    }
+}
+
+void asun_encode_vec_i64(asun_buf_t* buf, const void* base, size_t offset) {
+    const asun_vec_i64* v = (const asun_vec_i64*)((const char*)base + offset);
+    asun_buf_push(buf, '[');
+    for (size_t i = 0; i < v->len; i++) {
+        if (i > 0) asun_buf_push(buf, ',');
+        asun_buf_append_i64(buf, v->data[i]);
+    }
+    asun_buf_push(buf, ']');
+}
+
+void asun_encode_vec_u64(asun_buf_t* buf, const void* base, size_t offset) {
+    const asun_vec_u64* v = (const asun_vec_u64*)((const char*)base + offset);
+    asun_buf_push(buf, '[');
+    for (size_t i = 0; i < v->len; i++) {
+        if (i > 0) asun_buf_push(buf, ',');
+        asun_buf_append_u64(buf, v->data[i]);
+    }
+    asun_buf_push(buf, ']');
+}
+
+void asun_encode_vec_f64(asun_buf_t* buf, const void* base, size_t offset) {
+    const asun_vec_f64* v = (const asun_vec_f64*)((const char*)base + offset);
+    asun_buf_push(buf, '[');
+    for (size_t i = 0; i < v->len; i++) {
+        if (i > 0) asun_buf_push(buf, ',');
+        asun_buf_append_f64(buf, v->data[i]);
+    }
+    asun_buf_push(buf, ']');
+}
+
+void asun_encode_vec_str(asun_buf_t* buf, const void* base, size_t offset) {
+    const asun_vec_str* v = (const asun_vec_str*)((const char*)base + offset);
+    asun_buf_push(buf, '[');
+    for (size_t i = 0; i < v->len; i++) {
+        if (i > 0) asun_buf_push(buf, ',');
+        asun_buf_append_str(buf, v->data[i].data, v->data[i].len);
+    }
+    asun_buf_push(buf, ']');
+}
+
+void asun_encode_vec_bool(asun_buf_t* buf, const void* base, size_t offset) {
+    const asun_vec_bool* v = (const asun_vec_bool*)((const char*)base + offset);
+    asun_buf_push(buf, '[');
+    for (size_t i = 0; i < v->len; i++) {
+        if (i > 0) asun_buf_push(buf, ',');
+        asun_buf_appends(buf, v->data[i] ? "true" : "false");
+    }
+    asun_buf_push(buf, ']');
+}
+
+void asun_encode_vec_vec_i64(asun_buf_t* buf, const void* base, size_t offset) {
+    const asun_vec_vec_i64* v = (const asun_vec_vec_i64*)((const char*)base + offset);
+    asun_buf_push(buf, '[');
+    for (size_t i = 0; i < v->len; i++) {
+        if (i > 0) asun_buf_push(buf, ',');
+        asun_buf_push(buf, '[');
+        for (size_t j = 0; j < v->data[i].len; j++) {
+            if (j > 0) asun_buf_push(buf, ',');
+            asun_buf_append_i64(buf, v->data[i].data[j]);
+        }
+        asun_buf_push(buf, ']');
+    }
+    asun_buf_push(buf, ']');
+}
+
+/* ============================================================================
+ * Load functions
+ * ============================================================================ */
+
+static asun_err_t load_i64_raw(const char** pos, const char* end, int64_t* out) {
+    asun_skip_ws(pos, end);
+    bool neg = false;
+    if (*pos < end && **pos == '-') { neg = true; (*pos)++; }
+    uint64_t val = 0;
+    int digits = 0;
+    uint64_t limit = neg ? (uint64_t)INT64_MAX + 1 : (uint64_t)INT64_MAX;
+    while (*pos < end && **pos >= '0' && **pos <= '9') {
+        int d = **pos - '0';
+        if (val > (limit - d) / 10) return ASUN_ERR_INVALID_NUMBER;
+        val = val * 10 + d;
+        (*pos)++; digits++;
+    }
+    if (digits == 0) return ASUN_ERR_INVALID_NUMBER;
+    *out = neg ? -(int64_t)val : (int64_t)val;
+    return ASUN_OK;
+}
+
+static asun_err_t load_u64_raw(const char** pos, const char* end, uint64_t* out) {
+    asun_skip_ws(pos, end);
+    uint64_t val = 0;
+    int digits = 0;
+    while (*pos < end && **pos >= '0' && **pos <= '9') {
+        int d = **pos - '0';
+        if (val > (UINT64_MAX - d) / 10) return ASUN_ERR_INVALID_NUMBER;
+        val = val * 10 + d;
+        (*pos)++; digits++;
+    }
+    if (digits == 0) return ASUN_ERR_INVALID_NUMBER;
+    *out = val;
+    return ASUN_OK;
+}
+
+static asun_err_t load_f64_raw(const char** pos, const char* end, double* out) {
+    asun_skip_ws(pos, end);
+    if (*pos >= end) return ASUN_ERR_INVALID_NUMBER;
+    const char* p = *pos;
+    bool neg = false;
+    if (*p == '-') { neg = true; p++; }
+    if (p >= end || (*p < '0' && *p != '.')) return ASUN_ERR_INVALID_NUMBER;
+    /* Fast path: hand-rolled integer + fractional parsing */
+    uint64_t intpart = 0;
+    int digits = 0;
+    while (p < end && *p >= '0' && *p <= '9') {
+        intpart = intpart * 10 + (*p - '0');
+        p++; digits++;
+    }
+    if (p < end && *p == '.') {
+        p++;
+        double frac = 0.0, scale = 0.1;
+        while (p < end && *p >= '0' && *p <= '9') {
+            frac += (*p - '0') * scale;
+            scale *= 0.1;
+            p++; digits++;
+        }
+        *out = neg ? -(intpart + frac) : (intpart + frac);
+    } else {
+        *out = neg ? -(double)intpart : (double)intpart;
+    }
+    if (digits == 0) return ASUN_ERR_INVALID_NUMBER;
+    /* Handle exponent if present */
+    if (p < end && (*p == 'e' || *p == 'E')) {
+        char* endptr = NULL;
+        *out = strtod(*pos, &endptr);
+        if (endptr == *pos) return ASUN_ERR_INVALID_NUMBER;
+        p = endptr;
+    }
+    *pos = p;
+    return ASUN_OK;
+}
+
+asun_err_t asun_decode_bool(const char** pos, const char* end, void* base, size_t offset) {
+    asun_skip_ws(pos, end);
+    bool* out = (bool*)((char*)base + offset);
+    if (*pos + 4 <= end && memcmp(*pos, "true", 4) == 0) {
+        *out = true; *pos += 4; return ASUN_OK;
+    }
+    if (*pos + 5 <= end && memcmp(*pos, "false", 5) == 0) {
+        *out = false; *pos += 5; return ASUN_OK;
+    }
+    return ASUN_ERR_SYNTAX;
+}
+
+asun_err_t asun_decode_i8(const char** pos, const char* end, void* base, size_t offset) {
+    int64_t v; asun_err_t e = load_i64_raw(pos, end, &v);
+    if (e == ASUN_OK) *(int8_t*)((char*)base + offset) = (int8_t)v;
+    return e;
+}
+
+asun_err_t asun_decode_i16(const char** pos, const char* end, void* base, size_t offset) {
+    int64_t v; asun_err_t e = load_i64_raw(pos, end, &v);
+    if (e == ASUN_OK) *(int16_t*)((char*)base + offset) = (int16_t)v;
+    return e;
+}
+
+asun_err_t asun_decode_i32(const char** pos, const char* end, void* base, size_t offset) {
+    int64_t v; asun_err_t e = load_i64_raw(pos, end, &v);
+    if (e == ASUN_OK) *(int32_t*)((char*)base + offset) = (int32_t)v;
+    return e;
+}
+
+asun_err_t asun_decode_i64(const char** pos, const char* end, void* base, size_t offset) {
+    return load_i64_raw(pos, end, (int64_t*)((char*)base + offset));
+}
+
+asun_err_t asun_decode_u8(const char** pos, const char* end, void* base, size_t offset) {
+    uint64_t v; asun_err_t e = load_u64_raw(pos, end, &v);
+    if (e == ASUN_OK) *(uint8_t*)((char*)base + offset) = (uint8_t)v;
+    return e;
+}
+
+asun_err_t asun_decode_u16(const char** pos, const char* end, void* base, size_t offset) {
+    uint64_t v; asun_err_t e = load_u64_raw(pos, end, &v);
+    if (e == ASUN_OK) *(uint16_t*)((char*)base + offset) = (uint16_t)v;
+    return e;
+}
+
+asun_err_t asun_decode_u32(const char** pos, const char* end, void* base, size_t offset) {
+    uint64_t v; asun_err_t e = load_u64_raw(pos, end, &v);
+    if (e == ASUN_OK) *(uint32_t*)((char*)base + offset) = (uint32_t)v;
+    return e;
+}
+
+asun_err_t asun_decode_u64(const char** pos, const char* end, void* base, size_t offset) {
+    return load_u64_raw(pos, end, (uint64_t*)((char*)base + offset));
+}
+
+asun_err_t asun_decode_f32(const char** pos, const char* end, void* base, size_t offset) {
+    double v; asun_err_t e = load_f64_raw(pos, end, &v);
+    if (e == ASUN_OK) *(float*)((char*)base + offset) = (float)v;
+    return e;
+}
+
+asun_err_t asun_decode_f64(const char** pos, const char* end, void* base, size_t offset) {
+    return load_f64_raw(pos, end, (double*)((char*)base + offset));
+}
+
+asun_err_t asun_decode_char(const char** pos, const char* end, void* base, size_t offset) {
+    char* out_str = NULL;
+    size_t out_len = 0;
+    bool allocated = false;
+    asun_err_t err = asun_parse_string_value(pos, end, &out_str, &out_len, &allocated);
+    if (err != ASUN_OK) return err;
+    *(char*)((char*)base + offset) = (out_len > 0) ? out_str[0] : '\0';
+    if (allocated) free(out_str);
+    return ASUN_OK;
+}
+
+asun_err_t asun_decode_str(const char** pos, const char* end, void* base, size_t offset) {
+    asun_skip_ws(pos, end);
+    asun_string_t* s = (asun_string_t*)((char*)base + offset);
+    if (asun_at_value_end(*pos, end)) {
+        s->data = NULL; s->len = 0;
+        return ASUN_OK;
+    }
+    char* out_str = NULL;
+    size_t out_len = 0;
+    bool allocated = false;
+    asun_err_t err = asun_parse_string_value(pos, end, &out_str, &out_len, &allocated);
+    if (err != ASUN_OK) return err;
+    if (allocated) {
+        /* Take ownership of already-allocated buffer */
+        s->data = out_str;
+        s->len = out_len;
+    } else {
+        /* Make an owned copy of zero-copy result */
+        s->data = (char*)malloc(out_len + 1);
+        memcpy(s->data, out_str, out_len);
+        s->data[out_len] = '\0';
+        s->len = out_len;
+    }
+    return ASUN_OK;
+}
+
+asun_err_t asun_decode_opt_i64(const char** pos, const char* end, void* base, size_t offset) {
+    asun_skip_ws(pos, end);
+    asun_opt_i64* opt = (asun_opt_i64*)((char*)base + offset);
+    if (asun_at_value_end(*pos, end)) {
+        opt->has_value = false;
+        return ASUN_OK;
+    }
+    opt->has_value = true;
+    return load_i64_raw(pos, end, &opt->value);
+}
+
+asun_err_t asun_decode_opt_str(const char** pos, const char* end, void* base, size_t offset) {
+    asun_skip_ws(pos, end);
+    asun_opt_str* opt = (asun_opt_str*)((char*)base + offset);
+    if (asun_at_value_end(*pos, end)) {
+        opt->has_value = false;
+        opt->value.data = NULL; opt->value.len = 0;
+        return ASUN_OK;
+    }
+    opt->has_value = true;
+    char* out_str = NULL; size_t out_len = 0; bool allocated = false;
+    asun_err_t err = asun_parse_string_value(pos, end, &out_str, &out_len, &allocated);
+    if (err != ASUN_OK) return err;
+    if (allocated) {
+        opt->value.data = out_str;
+        opt->value.len = out_len;
+    } else {
+        opt->value.data = (char*)malloc(out_len + 1);
+        memcpy(opt->value.data, out_str, out_len);
+        opt->value.data[out_len] = '\0';
+        opt->value.len = out_len;
+    }
+    return ASUN_OK;
+}
+
+asun_err_t asun_decode_opt_f64(const char** pos, const char* end, void* base, size_t offset) {
+    asun_skip_ws(pos, end);
+    asun_opt_f64* opt = (asun_opt_f64*)((char*)base + offset);
+    if (asun_at_value_end(*pos, end)) {
+        opt->has_value = false;
+        return ASUN_OK;
+    }
+    opt->has_value = true;
+    return load_f64_raw(pos, end, &opt->value);
+}
+
+asun_err_t asun_decode_vec_i64(const char** pos, const char* end, void* base, size_t offset) {
+    asun_skip_ws(pos, end);
+    if (*pos >= end || **pos != '[') return ASUN_ERR_SYNTAX;
+    (*pos)++;
+    asun_vec_i64* v = (asun_vec_i64*)((char*)base + offset);
+    *v = asun_vec_i64_new();
+    bool first = true;
+    while (1) {
+        asun_skip_ws(pos, end);
+        if (*pos >= end || **pos == ']') { (*pos)++; break; }
+        if (!first) {
+            if (**pos == ',') { (*pos)++; asun_skip_ws(pos, end); if (*pos < end && **pos == ']') { (*pos)++; break; } }
+            else break;
+        }
+        first = false;
+        int64_t val;
+        asun_err_t e = load_i64_raw(pos, end, &val);
+        if (e != ASUN_OK) return e;
+        asun_vec_i64_push(v, val);
+    }
+    return ASUN_OK;
+}
+
+asun_err_t asun_decode_vec_u64(const char** pos, const char* end, void* base, size_t offset) {
+    asun_skip_ws(pos, end);
+    if (*pos >= end || **pos != '[') return ASUN_ERR_SYNTAX;
+    (*pos)++;
+    asun_vec_u64* v = (asun_vec_u64*)((char*)base + offset);
+    *v = asun_vec_u64_new();
+    bool first = true;
+    while (1) {
+        asun_skip_ws(pos, end);
+        if (*pos >= end || **pos == ']') { (*pos)++; break; }
+        if (!first) {
+            if (**pos == ',') { (*pos)++; asun_skip_ws(pos, end); if (*pos < end && **pos == ']') { (*pos)++; break; } }
+            else break;
+        }
+        first = false;
+        uint64_t val;
+        asun_err_t e = load_u64_raw(pos, end, &val);
+        if (e != ASUN_OK) return e;
+        asun_vec_u64_push(v, val);
+    }
+    return ASUN_OK;
+}
+
+asun_err_t asun_decode_vec_f64(const char** pos, const char* end, void* base, size_t offset) {
+    asun_skip_ws(pos, end);
+    if (*pos >= end || **pos != '[') return ASUN_ERR_SYNTAX;
+    (*pos)++;
+    asun_vec_f64* v = (asun_vec_f64*)((char*)base + offset);
+    *v = asun_vec_f64_new();
+    bool first = true;
+    while (1) {
+        asun_skip_ws(pos, end);
+        if (*pos >= end || **pos == ']') { (*pos)++; break; }
+        if (!first) {
+            if (**pos == ',') { (*pos)++; asun_skip_ws(pos, end); if (*pos < end && **pos == ']') { (*pos)++; break; } }
+            else break;
+        }
+        first = false;
+        double val;
+        asun_err_t e = load_f64_raw(pos, end, &val);
+        if (e != ASUN_OK) return e;
+        asun_vec_f64_push(v, val);
+    }
+    return ASUN_OK;
+}
+
+asun_err_t asun_decode_vec_str(const char** pos, const char* end, void* base, size_t offset) {
+    asun_skip_ws(pos, end);
+    if (*pos >= end || **pos != '[') return ASUN_ERR_SYNTAX;
+    (*pos)++;
+    asun_vec_str* v = (asun_vec_str*)((char*)base + offset);
+    *v = asun_vec_str_new();
+    bool first = true;
+    while (1) {
+        asun_skip_ws(pos, end);
+        if (*pos >= end || **pos == ']') { (*pos)++; break; }
+        if (!first) {
+            if (**pos == ',') { (*pos)++; asun_skip_ws(pos, end); if (*pos < end && **pos == ']') { (*pos)++; break; } }
+            else break;
+        }
+        first = false;
+        char* out_str = NULL; size_t out_len = 0; bool allocated = false;
+        asun_err_t e = asun_parse_string_value(pos, end, &out_str, &out_len, &allocated);
+        if (e != ASUN_OK) return e;
+        asun_string_t s;
+        if (allocated) {
+            s.data = out_str;
+            s.len = out_len;
+        } else {
+            s.data = (char*)malloc(out_len + 1);
+            memcpy(s.data, out_str, out_len);
+            s.data[out_len] = '\0';
+            s.len = out_len;
+        }
+        asun_vec_str_push(v, s);
+    }
+    return ASUN_OK;
+}
+
+asun_err_t asun_decode_vec_bool(const char** pos, const char* end, void* base, size_t offset) {
+    asun_skip_ws(pos, end);
+    if (*pos >= end || **pos != '[') return ASUN_ERR_SYNTAX;
+    (*pos)++;
+    asun_vec_bool* v = (asun_vec_bool*)((char*)base + offset);
+    *v = asun_vec_bool_new();
+    bool first = true;
+    while (1) {
+        asun_skip_ws(pos, end);
+        if (*pos >= end || **pos == ']') { (*pos)++; break; }
+        if (!first) {
+            if (**pos == ',') { (*pos)++; asun_skip_ws(pos, end); if (*pos < end && **pos == ']') { (*pos)++; break; } }
+            else break;
+        }
+        first = false;
+        if (*pos + 4 <= end && memcmp(*pos, "true", 4) == 0) {
+            asun_vec_bool_push(v, true); *pos += 4;
+        } else if (*pos + 5 <= end && memcmp(*pos, "false", 5) == 0) {
+            asun_vec_bool_push(v, false); *pos += 5;
+        } else return ASUN_ERR_SYNTAX;
+    }
+    return ASUN_OK;
+}
+
+asun_err_t asun_decode_vec_vec_i64(const char** pos, const char* end, void* base, size_t offset) {
+    asun_skip_ws(pos, end);
+    if (*pos >= end || **pos != '[') return ASUN_ERR_SYNTAX;
+    (*pos)++;
+    asun_vec_vec_i64* v = (asun_vec_vec_i64*)((char*)base + offset);
+    *v = asun_vec_vec_i64_new();
+    bool first = true;
+    while (1) {
+        asun_skip_ws(pos, end);
+        if (*pos >= end || **pos == ']') { (*pos)++; break; }
+        if (!first) {
+            if (**pos == ',') { (*pos)++; asun_skip_ws(pos, end); if (*pos < end && **pos == ']') { (*pos)++; break; } }
+            else break;
+        }
+        first = false;
+        if (*pos >= end || **pos != '[') return ASUN_ERR_SYNTAX;
+        (*pos)++;
+        asun_vec_i64 inner = asun_vec_i64_new();
+        bool ifirst = true;
+        while (1) {
+            asun_skip_ws(pos, end);
+            if (*pos >= end || **pos == ']') { (*pos)++; break; }
+            if (!ifirst) {
+                if (**pos == ',') { (*pos)++; asun_skip_ws(pos, end); if (*pos < end && **pos == ']') { (*pos)++; break; } }
+                else break;
+            }
+            ifirst = false;
+            int64_t val;
+            asun_err_t e = load_i64_raw(pos, end, &val);
+            if (e != ASUN_OK) return e;
+            asun_vec_i64_push(&inner, val);
+        }
+        asun_vec_vec_i64_push(v, inner);
+    }
+    return ASUN_OK;
+}
+
+static bool asun_type_is_array(asun_type_t type) {
+    switch (type) {
+        case ASUN_VEC_I64:
+        case ASUN_VEC_U64:
+        case ASUN_VEC_F64:
+        case ASUN_VEC_STR:
+        case ASUN_VEC_BOOL:
+        case ASUN_VEC_VEC_I64:
+            return true;
+        default:
+            return false;
+    }
+}
+
+/* ============================================================================
+ * Generic struct dump/load via descriptor
+ * ============================================================================ */
+
+static bool schema_name_needs_quoting(const char* s, size_t len) {
+    if (len == 0) return true;
+    if ((len == 4 && memcmp(s, "true", 4) == 0) ||
+        (len == 5 && memcmp(s, "false", 5) == 0)) return true;
+    if (s[0] == ' ' || s[len - 1] == ' ') return true;
+    bool could_num = true;
+    size_t num_start = (s[0] == '-') ? 1 : 0;
+    if (num_start >= len) could_num = false;
+    for (size_t i = 0; i < len; i++) {
+        unsigned char b = (unsigned char)s[i];
+        if (b <= 0x20 || b == ',' || b == '@' || b == ':' || b == '{' || b == '}' ||
+            b == '[' || b == ']' || b == '(' || b == ')' || b == '"' || b == '\\')
+            return true;
+        if (could_num && i >= num_start && !((b >= '0' && b <= '9') || b == '.'))
+            could_num = false;
+    }
+    return could_num && len > num_start;
+}
+
+static void asun_write_schema_name(asun_buf_t* buf, const char* s, size_t len) {
+    if (!schema_name_needs_quoting(s, len)) {
+        asun_buf_append(buf, s, len);
+        return;
+    }
+    asun_buf_push(buf, '"');
+    for (size_t i = 0; i < len; i++) {
+        char c = s[i];
+        switch (c) {
+            case '"': asun_buf_appends(buf, "\\\""); break;
+            case '\\': asun_buf_appends(buf, "\\\\"); break;
+            case '\n': asun_buf_appends(buf, "\\n"); break;
+            case '\r': asun_buf_appends(buf, "\\r"); break;
+            case '\t': asun_buf_appends(buf, "\\t"); break;
+            case '\b': asun_buf_appends(buf, "\\b"); break;
+            case '\f': asun_buf_appends(buf, "\\f"); break;
+            default: asun_buf_push(buf, c); break;
+        }
+    }
+    asun_buf_push(buf, '"');
+}
+
+void asun_write_schema(asun_buf_t* buf, const asun_desc_t* desc) {
+    asun_buf_push(buf, '{');
+    for (int i = 0; i < desc->field_count; i++) {
+        if (i > 0) asun_buf_push(buf, ',');
+        const asun_field_t* f = &desc->fields[i];
+        asun_write_schema_name(buf, f->name, f->name_len);
+        if (f->type == ASUN_STRUCT && f->sub_desc) {
+            asun_buf_push(buf, '@');
+            if (f->dump_fn) {
+                /* vec-of-struct: write @[{...}] */
+                asun_buf_push(buf, '[');
+                asun_write_schema(buf, (const asun_desc_t*)f->sub_desc);
+                asun_buf_push(buf, ']');
+            } else {
+                /* direct struct: write @{...} */
+                asun_write_schema(buf, (const asun_desc_t*)f->sub_desc);
+            }
+        } else if (asun_type_is_array(f->type)) {
+            asun_buf_appends(buf, "@[]");
+        }
+    }
+    asun_buf_push(buf, '}');
+}
+
+void asun_write_schema_typed(asun_buf_t* buf, const asun_desc_t* desc) {
+    asun_buf_push(buf, '{');
+    for (int i = 0; i < desc->field_count; i++) {
+        if (i > 0) asun_buf_push(buf, ',');
+        const asun_field_t* f = &desc->fields[i];
+        asun_write_schema_name(buf, f->name, f->name_len);
+        if (f->type == ASUN_STRUCT && f->sub_desc) {
+            asun_buf_push(buf, '@');
+            if (f->dump_fn) {
+                asun_buf_push(buf, '[');
+                asun_write_schema_typed(buf, (const asun_desc_t*)f->sub_desc);
+                asun_buf_push(buf, ']');
+            } else {
+                asun_write_schema_typed(buf, (const asun_desc_t*)f->sub_desc);
+            }
+        } else if (f->type_str) {
+            asun_buf_push(buf, '@');
+            asun_buf_appends(buf, f->type_str);
+        }
+    }
+    asun_buf_push(buf, '}');
+}
+
+void asun_encode_struct(asun_buf_t* buf, const void* obj, const asun_desc_t* desc) {
+    asun_buf_push(buf, '(');
+    for (int i = 0; i < desc->field_count; i++) {
+        if (i > 0) asun_buf_push(buf, ',');
+        const asun_field_t* f = &desc->fields[i];
+        if (f->type == ASUN_STRUCT && f->sub_desc) {
+            if (f->dump_fn) {
+                /* vec-of-struct or custom dump */
+                f->dump_fn(buf, obj, f->offset);
+            } else {
+                asun_encode_struct(buf, (const char*)obj + f->offset,
+                                (const asun_desc_t*)f->sub_desc);
+            }
+        } else {
+            f->dump_fn(buf, obj, f->offset);
+        }
+    }
+    asun_buf_push(buf, ')');
+}
+
+/* ---- Pretty-format: smart indentation for ASUN output ---- */
+#define ASUN_PRETTY_MAX_WIDTH 100
+
+static void pretty_build_match_table(const char* src, int n, int* mat) {
+    int stack[256]; int sp = 0;
+    int in_quote = 0;
+    for (int i = 0; i < n; i++) mat[i] = -1;
+    for (int i = 0; i < n; i++) {
+        if (in_quote) {
+            if (src[i] == '\\' && i + 1 < n) { i++; continue; }
+            if (src[i] == '"') in_quote = 0;
+            continue;
+        }
+        switch (src[i]) {
+            case '"': in_quote = 1; break;
+            case '{': case '(': case '[': stack[sp++] = i; break;
+            case '}': case ')': case ']':
+                if (sp > 0) { int j = stack[--sp]; mat[j] = i; mat[i] = j; }
+                break;
+        }
+    }
+}
+
+typedef struct {
+    const char* src;
+    int n;
+    int* mat;
+    asun_buf_t* out;
+    int pos;
+    int depth;
+} pretty_state_t;
+
+static void pretty_indent(pretty_state_t* s) {
+    for (int i = 0; i < s->depth; i++) { asun_buf_push(s->out, ' '); asun_buf_push(s->out, ' '); }
+}
+
+static void pretty_quoted(pretty_state_t* s) {
+    asun_buf_push(s->out, '"'); s->pos++;
+    while (s->pos < s->n) {
+        char ch = s->src[s->pos]; asun_buf_push(s->out, ch); s->pos++;
+        if (ch == '\\' && s->pos < s->n) { asun_buf_push(s->out, s->src[s->pos]); s->pos++; }
+        else if (ch == '"') break;
+    }
+}
+
+static void pretty_inline(pretty_state_t* s, int start, int end) {
+    int d = 0, inq = 0;
+    for (int i = start; i < end; i++) {
+        char ch = s->src[i];
+        if (inq) {
+            asun_buf_push(s->out, ch);
+            if (ch == '\\' && i + 1 < end) { i++; asun_buf_push(s->out, s->src[i]); }
+            else if (ch == '"') inq = 0;
+            continue;
+        }
+        switch (ch) {
+            case '"': inq = 1; asun_buf_push(s->out, ch); break;
+            case '{': case '(': case '[': d++; asun_buf_push(s->out, ch); break;
+            case '}': case ')': case ']': d--; asun_buf_push(s->out, ch); break;
+            case ',': asun_buf_push(s->out, ','); if (d == 1) asun_buf_push(s->out, ' '); break;
+            default: asun_buf_push(s->out, ch); break;
+        }
+    }
+}
+
+static void pretty_group(pretty_state_t* s);
+
+static void pretty_value(pretty_state_t* s) {
+    while (s->pos < s->n) {
+        char ch = s->src[s->pos];
+        if (ch == ',' || ch == ')' || ch == '}' || ch == ']') break;
+        if (ch == '"') pretty_quoted(s); else { asun_buf_push(s->out, ch); s->pos++; }
+    }
+}
+
+static void pretty_element(pretty_state_t* s, int boundary) {
+    while (s->pos < boundary && s->src[s->pos] != ',') {
+        char ch = s->src[s->pos];
+        if (ch == '{' || ch == '(' || ch == '[') pretty_group(s);
+        else if (ch == '"') pretty_quoted(s);
+        else { asun_buf_push(s->out, ch); s->pos++; }
+    }
+}
+
+static void pretty_group(pretty_state_t* s) {
+    if (s->pos >= s->n) return;
+    char ch = s->src[s->pos];
+    if (ch != '{' && ch != '(' && ch != '[') { pretty_value(s); return; }
+
+    /* Special case: [{...}] array schema */
+    if (ch == '[' && s->pos + 1 < s->n && s->src[s->pos + 1] == '{') {
+        int cb = s->mat[s->pos + 1], ck = s->mat[s->pos];
+        if (cb >= 0 && ck >= 0 && cb + 1 == ck) {
+            int width = ck - s->pos + 1;
+            if (width <= ASUN_PRETTY_MAX_WIDTH) {
+                pretty_inline(s, s->pos, ck + 1); s->pos = ck + 1; return;
+            }
+            asun_buf_push(s->out, '['); s->pos++;
+            pretty_group(s);
+            asun_buf_push(s->out, ']'); s->pos++;
+            return;
+        }
+    }
+
+    int close = s->mat[s->pos];
+    if (close < 0) { asun_buf_push(s->out, ch); s->pos++; return; }
+    int width = close - s->pos + 1;
+    if (width <= ASUN_PRETTY_MAX_WIDTH) {
+        pretty_inline(s, s->pos, close + 1); s->pos = close + 1; return;
+    }
+
+    char close_ch = s->src[close];
+    asun_buf_push(s->out, ch); s->pos++;
+    if (s->pos >= close) { asun_buf_push(s->out, close_ch); s->pos = close + 1; return; }
+
+    asun_buf_push(s->out, '\n'); s->depth++;
+    int first = 1;
+    while (s->pos < close) {
+        if (s->src[s->pos] == ',') s->pos++;
+        if (!first) { asun_buf_push(s->out, ','); asun_buf_push(s->out, '\n'); }
+        first = 0;
+        pretty_indent(s); pretty_element(s, close);
+    }
+    asun_buf_push(s->out, '\n'); s->depth--;
+    pretty_indent(s);
+    asun_buf_push(s->out, close_ch); s->pos = close + 1;
+}
+
+static void pretty_object_top(pretty_state_t* s) {
+    pretty_group(s);
+    if (s->pos < s->n && s->src[s->pos] == ':') {
+        asun_buf_push(s->out, ':'); s->pos++;
+        if (s->pos < s->n) {
+            int cl = s->mat[s->pos];
+            if (cl >= 0 && cl - s->pos + 1 <= ASUN_PRETTY_MAX_WIDTH) {
+                pretty_inline(s, s->pos, cl + 1); s->pos = cl + 1;
+            } else {
+                asun_buf_push(s->out, '\n'); s->depth++;
+                pretty_indent(s); pretty_group(s); s->depth--;
+            }
+        }
+    }
+}
+
+static void pretty_array_top(pretty_state_t* s) {
+    asun_buf_push(s->out, '['); s->pos++;
+    pretty_group(s);
+    if (s->pos < s->n && s->src[s->pos] == ']') { asun_buf_push(s->out, ']'); s->pos++; }
+    if (s->pos < s->n && s->src[s->pos] == ':') {
+        asun_buf_push(s->out, ':'); asun_buf_push(s->out, '\n'); s->pos++;
+    }
+    s->depth++;
+    int first = 1;
+    while (s->pos < s->n) {
+        if (s->src[s->pos] == ',') s->pos++;
+        if (s->pos >= s->n) break;
+        if (!first) { asun_buf_push(s->out, ','); asun_buf_push(s->out, '\n'); }
+        first = 0;
+        pretty_indent(s); pretty_group(s);
+    }
+    asun_buf_push(s->out, '\n'); s->depth--;
+}
+
+asun_buf_t asun_pretty_format(const char* src, size_t len) {
+    asun_buf_t out = asun_buf_new(len * 2);
+    if (len == 0) return out;
+
+    int* mat = (int*)malloc(sizeof(int) * len);
+    if (!mat) return out;
+    pretty_build_match_table(src, (int)len, mat);
+
+    pretty_state_t s = { src, (int)len, mat, &out, 0, 0 };
+    if (src[0] == '[' && len > 1 && src[1] == '{')
+        pretty_array_top(&s);
+    else if (src[0] == '{')
+        pretty_object_top(&s);
+    else
+        asun_buf_append(&out, src, len);
+
+    free(mat);
+    return out;
+}
+
+asun_err_t asun_decode_struct(const char** pos, const char* end, void* obj, const asun_desc_t* desc) {
+    asun_skip_ws(pos, end);
+
+    /* If starts with '{', it has an inline schema */
+    if (*pos < end && **pos == '{') {
+        asun_schema_field_t schema[64];
+        int schema_count = 0;
+        asun_err_t err = asun_parse_schema(pos, end, schema, &schema_count, 64);
+        if (err != ASUN_OK) return err;
+        asun_skip_ws(pos, end);
+        if (*pos >= end || **pos != ':') { asun_free_schema_fields(schema, schema_count); return ASUN_ERR_SYNTAX; }
+        (*pos)++;
+        asun_skip_ws(pos, end);
+        /* Build field map */
+        int field_map[64];
+        for (int i = 0; i < schema_count; i++) {
+            field_map[i] = -1;
+            for (int j = 0; j < desc->field_count; j++) {
+                if (schema[i].len == desc->fields[j].name_len &&
+                    memcmp(schema[i].name, desc->fields[j].name, schema[i].len) == 0) {
+                    field_map[i] = j; break;
+                }
+            }
+        }
+        if (*pos >= end || **pos != '(') { asun_free_schema_fields(schema, schema_count); return ASUN_ERR_SYNTAX; }
+        (*pos)++;
+        for (int i = 0; i < schema_count; i++) {
+            asun_skip_ws(pos, end);
+            if (*pos < end && **pos == ')') break;
+            if (i > 0) {
+                if (**pos == ',') { (*pos)++; asun_skip_ws(pos, end); if (*pos < end && **pos == ')') break; }
+                else if (**pos == ')') break;
+                else { asun_free_schema_fields(schema, schema_count); return ASUN_ERR_SYNTAX; }
+            }
+            if (field_map[i] >= 0) {
+                const asun_field_t* f = &desc->fields[field_map[i]];
+                if (f->type == ASUN_STRUCT && f->sub_desc) {
+                    if (f->load_fn) {
+                        err = f->load_fn(pos, end, obj, f->offset);
+                    } else {
+                        err = asun_decode_struct(pos, end, (char*)obj + f->offset,
+                                               (const asun_desc_t*)f->sub_desc);
+                    }
+                } else {
+                    err = f->load_fn(pos, end, obj, f->offset);
+                }
+                if (err != ASUN_OK) { asun_free_schema_fields(schema, schema_count); return err; }
+            } else {
+                asun_skip_value(pos, end);
+            }
+        }
+        asun_skip_remaining_tuple_values(pos, end);
+        asun_skip_ws(pos, end);
+        if (*pos < end && **pos == ')') (*pos)++;
+        asun_free_schema_fields(schema, schema_count);
+        return ASUN_OK;
+    }
+
+    /* Positional tuple: (val1,val2,...) */
+    if (*pos < end && **pos == '(') {
+        (*pos)++;
+        for (int i = 0; i < desc->field_count; i++) {
+            asun_skip_ws(pos, end);
+            if (*pos < end && **pos == ')') break;
+            if (i > 0) {
+                if (**pos == ',') { (*pos)++; asun_skip_ws(pos, end); if (*pos < end && **pos == ')') break; }
+                else if (**pos == ')') break;
+                else return ASUN_ERR_SYNTAX;
+            }
+            const asun_field_t* f = &desc->fields[i];
+            asun_err_t err;
+            if (f->type == ASUN_STRUCT && f->sub_desc) {
+                if (f->load_fn) {
+                    err = f->load_fn(pos, end, obj, f->offset);
+                } else {
+                    err = asun_decode_struct(pos, end, (char*)obj + f->offset,
+                                           (const asun_desc_t*)f->sub_desc);
+                }
+            } else {
+                err = f->load_fn(pos, end, obj, f->offset);
+            }
+            if (err != ASUN_OK) return err;
+        }
+        asun_skip_remaining_tuple_values(pos, end);
+        asun_skip_ws(pos, end);
+        if (*pos < end && **pos == ')') (*pos)++;
+        return ASUN_OK;
+    }
+
+    return ASUN_ERR_SYNTAX;
+}
+
+/* ===========================================================================
+ * ASUN Binary Format Implementation
+ * Wire format: little-endian fixed-width, no field names, positional.
+ * Strings: u32 length prefix + bytes (no null terminator).
+ * Arrays: u32 count prefix + elements.
+ * Boolean: 1 byte (0 or 1).
+ * =========================================================================== */
+
+/* ---- scalar dump ---- */
+void asun_bin_encode_bool(asun_buf_t* buf, const void* base, size_t off) {
+    bool v; memcpy(&v, (const char*)base + off, sizeof(v));
+    asun_bin_write_u8(buf, v ? 1 : 0);
+}
+void asun_bin_encode_i8(asun_buf_t* buf, const void* base, size_t off) {
+    int8_t v; memcpy(&v, (const char*)base + off, 1);
+    asun_bin_write_u8(buf, (uint8_t)v);
+}
+void asun_bin_encode_i16(asun_buf_t* buf, const void* base, size_t off) {
+    int16_t v; memcpy(&v, (const char*)base + off, 2);
+    asun_bin_write_u16(buf, (uint16_t)v);
+}
+void asun_bin_encode_i32(asun_buf_t* buf, const void* base, size_t off) {
+    int32_t v; memcpy(&v, (const char*)base + off, 4);
+    asun_bin_write_u32(buf, (uint32_t)v);
+}
+void asun_bin_encode_i64(asun_buf_t* buf, const void* base, size_t off) {
+    int64_t v; memcpy(&v, (const char*)base + off, 8);
+    asun_bin_write_u64(buf, (uint64_t)v);
+}
+void asun_bin_encode_u8(asun_buf_t* buf, const void* base, size_t off) {
+    uint8_t v; memcpy(&v, (const char*)base + off, 1);
+    asun_bin_write_u8(buf, v);
+}
+void asun_bin_encode_u16(asun_buf_t* buf, const void* base, size_t off) {
+    uint16_t v; memcpy(&v, (const char*)base + off, 2);
+    asun_bin_write_u16(buf, v);
+}
+void asun_bin_encode_u32(asun_buf_t* buf, const void* base, size_t off) {
+    uint32_t v; memcpy(&v, (const char*)base + off, 4);
+    asun_bin_write_u32(buf, v);
+}
+void asun_bin_encode_u64(asun_buf_t* buf, const void* base, size_t off) {
+    uint64_t v; memcpy(&v, (const char*)base + off, 8);
+    asun_bin_write_u64(buf, v);
+}
+void asun_bin_encode_f32(asun_buf_t* buf, const void* base, size_t off) {
+    float v; memcpy(&v, (const char*)base + off, 4);
+    asun_bin_write_f32(buf, v);
+}
+void asun_bin_encode_f64(asun_buf_t* buf, const void* base, size_t off) {
+    double v; memcpy(&v, (const char*)base + off, 8);
+    asun_bin_write_f64(buf, v);
+}
+void asun_bin_encode_str(asun_buf_t* buf, const void* base, size_t off) {
+    asun_string_t s; memcpy(&s, (const char*)base + off, sizeof(s));
+    asun_bin_write_asun_string(buf, &s);
+}
+
+/* ---- vector dump ---- */
+void asun_bin_encode_vec_i64(asun_buf_t* buf, const void* base, size_t off) {
+    asun_vec_i64 v; memcpy(&v, (const char*)base + off, sizeof(v));
+    asun_bin_write_u32(buf, (uint32_t)v.len);
+    if (v.len) asun_buf_append(buf, (const char*)v.data, v.len * sizeof(int64_t));
+}
+void asun_bin_encode_vec_u64(asun_buf_t* buf, const void* base, size_t off) {
+    asun_vec_u64 v; memcpy(&v, (const char*)base + off, sizeof(v));
+    asun_bin_write_u32(buf, (uint32_t)v.len);
+    if (v.len) asun_buf_append(buf, (const char*)v.data, v.len * sizeof(uint64_t));
+}
+void asun_bin_encode_vec_f64(asun_buf_t* buf, const void* base, size_t off) {
+    asun_vec_f64 v; memcpy(&v, (const char*)base + off, sizeof(v));
+    asun_bin_write_u32(buf, (uint32_t)v.len);
+    if (v.len) asun_buf_append(buf, (const char*)v.data, v.len * sizeof(double));
+}
+void asun_bin_encode_vec_str(asun_buf_t* buf, const void* base, size_t off) {
+    asun_vec_str v; memcpy(&v, (const char*)base + off, sizeof(v));
+    asun_bin_write_u32(buf, (uint32_t)v.len);
+    for (size_t i = 0; i < v.len; i++) asun_bin_write_asun_string(buf, &v.data[i]);
+}
+void asun_bin_encode_vec_bool(asun_buf_t* buf, const void* base, size_t off) {
+    asun_vec_bool v; memcpy(&v, (const char*)base + off, sizeof(v));
+    asun_bin_write_u32(buf, (uint32_t)v.len);
+    for (size_t i = 0; i < v.len; i++) asun_bin_write_u8(buf, v.data[i] ? 1 : 0);
+}
+
+/* ---- scalar load ---- */
+asun_err_t asun_bin_decode_bool(const char** pos, const char* end, void* base, size_t off) {
+    uint8_t v; asun_err_t e = asun_bin_read_u8(pos, end, &v);
+    if (e) return e;
+    bool b = v != 0; memcpy((char*)base + off, &b, sizeof(b)); return ASUN_OK;
+}
+asun_err_t asun_bin_decode_i8(const char** pos, const char* end, void* base, size_t off) {
+    uint8_t v; asun_err_t e = asun_bin_read_u8(pos, end, &v);
+    if (e) return e; memcpy((char*)base + off, &v, 1); return ASUN_OK;
+}
+asun_err_t asun_bin_decode_i16(const char** pos, const char* end, void* base, size_t off) {
+    uint16_t v; asun_err_t e = asun_bin_read_u16(pos, end, &v);
+    if (e) return e; memcpy((char*)base + off, &v, 2); return ASUN_OK;
+}
+asun_err_t asun_bin_decode_i32(const char** pos, const char* end, void* base, size_t off) {
+    uint32_t v; asun_err_t e = asun_bin_read_u32(pos, end, &v);
+    if (e) return e; memcpy((char*)base + off, &v, 4); return ASUN_OK;
+}
+asun_err_t asun_bin_decode_i64(const char** pos, const char* end, void* base, size_t off) {
+    uint64_t v; asun_err_t e = asun_bin_read_u64(pos, end, &v);
+    if (e) return e; memcpy((char*)base + off, &v, 8); return ASUN_OK;
+}
+asun_err_t asun_bin_decode_u8(const char** pos, const char* end, void* base, size_t off) {
+    uint8_t v; asun_err_t e = asun_bin_read_u8(pos, end, &v);
+    if (e) return e; memcpy((char*)base + off, &v, 1); return ASUN_OK;
+}
+asun_err_t asun_bin_decode_u16(const char** pos, const char* end, void* base, size_t off) {
+    uint16_t v; asun_err_t e = asun_bin_read_u16(pos, end, &v);
+    if (e) return e; memcpy((char*)base + off, &v, 2); return ASUN_OK;
+}
+asun_err_t asun_bin_decode_u32(const char** pos, const char* end, void* base, size_t off) {
+    uint32_t v; asun_err_t e = asun_bin_read_u32(pos, end, &v);
+    if (e) return e; memcpy((char*)base + off, &v, 4); return ASUN_OK;
+}
+asun_err_t asun_bin_decode_u64(const char** pos, const char* end, void* base, size_t off) {
+    uint64_t v; asun_err_t e = asun_bin_read_u64(pos, end, &v);
+    if (e) return e; memcpy((char*)base + off, &v, 8); return ASUN_OK;
+}
+asun_err_t asun_bin_decode_f32(const char** pos, const char* end, void* base, size_t off) {
+    float v; asun_err_t e = asun_bin_read_f32(pos, end, &v);
+    if (e) return e; memcpy((char*)base + off, &v, 4); return ASUN_OK;
+}
+asun_err_t asun_bin_decode_f64(const char** pos, const char* end, void* base, size_t off) {
+    double v; asun_err_t e = asun_bin_read_f64(pos, end, &v);
+    if (e) return e; memcpy((char*)base + off, &v, 8); return ASUN_OK;
+}
+asun_err_t asun_bin_decode_str(const char** pos, const char* end, void* base, size_t off) {
+    uint32_t len;
+    asun_err_t e = asun_bin_read_u32(pos, end, &len);
+    if (e) return e;
+    if ((size_t)(end - *pos) < len) return ASUN_ERR_BUFFER_OVERFLOW;
+    char* buf = (char*)malloc(len + 1);
+    if (!buf) return ASUN_ERR_ALLOC;
+    if (len) memcpy(buf, *pos, len);
+    buf[len] = '\0';
+    *pos += len;
+    asun_string_t s = {buf, len};
+    memcpy((char*)base + off, &s, sizeof(s));
+    return ASUN_OK;
+}
+
+/* ---- vector load ---- */
+asun_err_t asun_bin_decode_vec_i64(const char** pos, const char* end, void* base, size_t off) {
+    uint32_t n; asun_err_t e = asun_bin_read_u32(pos, end, &n); if (e) return e;
+    if ((size_t)(end - *pos) < (size_t)n * 8) return ASUN_ERR_BUFFER_OVERFLOW;
+    int64_t* arr = (int64_t*)malloc((size_t)n * sizeof(int64_t));
+    if (!arr && n) return ASUN_ERR_ALLOC;
+    memcpy(arr, *pos, (size_t)n * 8); *pos += (size_t)n * 8;
+    asun_vec_i64 v = {arr, n, n}; memcpy((char*)base + off, &v, sizeof(v)); return ASUN_OK;
+}
+asun_err_t asun_bin_decode_vec_u64(const char** pos, const char* end, void* base, size_t off) {
+    uint32_t n; asun_err_t e = asun_bin_read_u32(pos, end, &n); if (e) return e;
+    if ((size_t)(end - *pos) < (size_t)n * 8) return ASUN_ERR_BUFFER_OVERFLOW;
+    uint64_t* arr = (uint64_t*)malloc((size_t)n * sizeof(uint64_t));
+    if (!arr && n) return ASUN_ERR_ALLOC;
+    memcpy(arr, *pos, (size_t)n * 8); *pos += (size_t)n * 8;
+    asun_vec_u64 v = {arr, n, n}; memcpy((char*)base + off, &v, sizeof(v)); return ASUN_OK;
+}
+asun_err_t asun_bin_decode_vec_f64(const char** pos, const char* end, void* base, size_t off) {
+    uint32_t n; asun_err_t e = asun_bin_read_u32(pos, end, &n); if (e) return e;
+    if ((size_t)(end - *pos) < (size_t)n * 8) return ASUN_ERR_BUFFER_OVERFLOW;
+    double* arr = (double*)malloc((size_t)n * sizeof(double));
+    if (!arr && n) return ASUN_ERR_ALLOC;
+    memcpy(arr, *pos, (size_t)n * 8); *pos += (size_t)n * 8;
+    asun_vec_f64 v = {arr, n, n}; memcpy((char*)base + off, &v, sizeof(v)); return ASUN_OK;
+}
+asun_err_t asun_bin_decode_vec_str(const char** pos, const char* end, void* base, size_t off) {
+    uint32_t n; asun_err_t e = asun_bin_read_u32(pos, end, &n); if (e) return e;
+    asun_string_t* arr = (asun_string_t*)malloc((size_t)n * sizeof(asun_string_t));
+    if (!arr && n) return ASUN_ERR_ALLOC;
+    for (uint32_t i = 0; i < n; i++) {
+        uint32_t slen;
+        e = asun_bin_read_u32(pos, end, &slen); if (e) { free(arr); return e; }
+        if ((size_t)(end - *pos) < slen) { free(arr); return ASUN_ERR_BUFFER_OVERFLOW; }
+        char* sbuf = (char*)malloc(slen + 1);
+        if (!sbuf && slen) { free(arr); return ASUN_ERR_ALLOC; }
+        if (slen) memcpy(sbuf, *pos, slen);
+        if (sbuf) sbuf[slen] = '\0';
+        *pos += slen;
+        arr[i].data = sbuf ? sbuf : (char*)"";
+        arr[i].len  = slen;
+    }
+    asun_vec_str v = {arr, n, n}; memcpy((char*)base + off, &v, sizeof(v)); return ASUN_OK;
+}
+asun_err_t asun_bin_decode_vec_bool(const char** pos, const char* end, void* base, size_t off) {
+    uint32_t n; asun_err_t e = asun_bin_read_u32(pos, end, &n); if (e) return e;
+    bool* arr = (bool*)malloc((size_t)n * sizeof(bool));
+    if (!arr && n) return ASUN_ERR_ALLOC;
+    for (uint32_t i = 0; i < n; i++) {
+        uint8_t b; e = asun_bin_read_u8(pos, end, &b); if (e) { free(arr); return e; }
+        arr[i] = b != 0;
+    }
+    asun_vec_bool v = {arr, n, n}; memcpy((char*)base + off, &v, sizeof(v)); return ASUN_OK;
+}
+
+/* ---- type dispatch ---- */
+static void asun_bin_select_dump(asun_buf_t* buf, const asun_field_t* f, const void* base) {
+    switch (f->type) {
+        case ASUN_BOOL:       asun_bin_encode_bool    (buf, base, f->offset); break;
+        case ASUN_I8:         asun_bin_encode_i8      (buf, base, f->offset); break;
+        case ASUN_I16:        asun_bin_encode_i16     (buf, base, f->offset); break;
+        case ASUN_I32:        asun_bin_encode_i32     (buf, base, f->offset); break;
+        case ASUN_I64:        asun_bin_encode_i64     (buf, base, f->offset); break;
+        case ASUN_U8:         asun_bin_encode_u8      (buf, base, f->offset); break;
+        case ASUN_U16:        asun_bin_encode_u16     (buf, base, f->offset); break;
+        case ASUN_U32:        asun_bin_encode_u32     (buf, base, f->offset); break;
+        case ASUN_U64:        asun_bin_encode_u64     (buf, base, f->offset); break;
+        case ASUN_F32:        asun_bin_encode_f32     (buf, base, f->offset); break;
+        case ASUN_F64:        asun_bin_encode_f64     (buf, base, f->offset); break;
+        case ASUN_STR:        asun_bin_encode_str     (buf, base, f->offset); break;
+        case ASUN_VEC_I64:    asun_bin_encode_vec_i64 (buf, base, f->offset); break;
+        case ASUN_VEC_U64:    asun_bin_encode_vec_u64 (buf, base, f->offset); break;
+        case ASUN_VEC_F64:    asun_bin_encode_vec_f64 (buf, base, f->offset); break;
+        case ASUN_VEC_STR:    asun_bin_encode_vec_str (buf, base, f->offset); break;
+        case ASUN_VEC_BOOL:   asun_bin_encode_vec_bool(buf, base, f->offset); break;
+        case ASUN_STRUCT:
+            if (f->dump_fn) f->dump_fn(buf, base, f->offset);
+            else asun_bin_encode_struct(buf, (const char*)base + f->offset,
+                                      (const asun_desc_t*)f->sub_desc);
+            break;
+        default: break;
+    }
+}
+
+static asun_err_t asun_bin_select_load(const char** pos, const char* end,
+                                        const asun_field_t* f, void* base) {
+    switch (f->type) {
+        case ASUN_BOOL:       return asun_bin_decode_bool    (pos, end, base, f->offset);
+        case ASUN_I8:         return asun_bin_decode_i8      (pos, end, base, f->offset);
+        case ASUN_I16:        return asun_bin_decode_i16     (pos, end, base, f->offset);
+        case ASUN_I32:        return asun_bin_decode_i32     (pos, end, base, f->offset);
+        case ASUN_I64:        return asun_bin_decode_i64     (pos, end, base, f->offset);
+        case ASUN_U8:         return asun_bin_decode_u8      (pos, end, base, f->offset);
+        case ASUN_U16:        return asun_bin_decode_u16     (pos, end, base, f->offset);
+        case ASUN_U32:        return asun_bin_decode_u32     (pos, end, base, f->offset);
+        case ASUN_U64:        return asun_bin_decode_u64     (pos, end, base, f->offset);
+        case ASUN_F32:        return asun_bin_decode_f32     (pos, end, base, f->offset);
+        case ASUN_F64:        return asun_bin_decode_f64     (pos, end, base, f->offset);
+        case ASUN_STR:        return asun_bin_decode_str     (pos, end, base, f->offset);
+        case ASUN_VEC_I64:    return asun_bin_decode_vec_i64 (pos, end, base, f->offset);
+        case ASUN_VEC_U64:    return asun_bin_decode_vec_u64 (pos, end, base, f->offset);
+        case ASUN_VEC_F64:    return asun_bin_decode_vec_f64 (pos, end, base, f->offset);
+        case ASUN_VEC_STR:    return asun_bin_decode_vec_str (pos, end, base, f->offset);
+        case ASUN_VEC_BOOL:   return asun_bin_decode_vec_bool(pos, end, base, f->offset);
+        case ASUN_STRUCT:
+            if (f->load_fn) return f->load_fn(pos, end, base, f->offset);
+            return asun_bin_decode_struct(pos, end, (char*)base + f->offset,
+                                        (const asun_desc_t*)f->sub_desc);
+        default: return ASUN_OK;
+    }
+}
+
+/* ---- struct dump / load ---- */
+void asun_bin_encode_struct(asun_buf_t* buf, const void* obj, const asun_desc_t* desc) {
+    for (int i = 0; i < desc->field_count; i++)
+        asun_bin_select_dump(buf, &desc->fields[i], obj);
+}
+
+asun_err_t asun_bin_decode_struct(const char** pos, const char* end,
+                                  void* obj, const asun_desc_t* desc) {
+    for (int i = 0; i < desc->field_count; i++) {
+        asun_err_t e = asun_bin_select_load(pos, end, &desc->fields[i], obj);
+        if (e != ASUN_OK) return e;
+    }
+    return ASUN_OK;
+}
