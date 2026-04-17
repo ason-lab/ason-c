@@ -3,9 +3,9 @@
 [![C11](https://img.shields.io/badge/C-11-blue.svg)](https://en.cppreference.com/w/c/11)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-面向 [ASUN](https://github.com/asun-lab/asun) 的高性能 C11 实现。ASUN 是一种 Schema 驱动的数据格式，适合把重复对象压缩成更紧凑的结构化载荷。
+面向 [ASUN](https://github.com/asunLab/asun) 的高性能 C11 实现。ASUN 是一种 Schema 驱动的数据格式，适合把重复对象压缩成更紧凑的结构化载荷。
 
-[English](README.md)
+[English](https://github.com/asunLab/asun-c/blob/main/README.md)
 
 ## 为什么用 ASUN
 
@@ -18,8 +18,10 @@ ASUN 只写一次 Schema，后续每一行只保留值：
 ]
 ```
 
-```text
-[{id@int,name@str,active@bool}]:(1,Alice,true),(2,Bob,false)
+```asun
+[{id,name,active}]:
+    (1,Alice,true),
+    (2,Bob,false)
 ```
 
 这通常意味着更少的 token、更小的体积，以及比重复键名 JSON 更快的解析。

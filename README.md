@@ -3,9 +3,9 @@
 [![C11](https://img.shields.io/badge/C-11-blue.svg)](https://en.cppreference.com/w/c/11)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-High-performance C11 support for [ASUN](https://github.com/asun-lab/asun), a schema-driven data format that removes repeated keys from structured payloads.
+High-performance C11 support for [ASUN](https://github.com/asunLab/asun), a schema-driven data format that removes repeated keys from structured payloads.
 
-[中文文档](README_CN.md)
+[中文文档](https://github.com/asunLab/asun-c/blob/main/README_CN.md)
 
 ## Why ASUN
 
@@ -18,8 +18,10 @@ ASUN keeps the schema once and stores each row as a compact tuple:
 ]
 ```
 
-```text
-[{id@int,name@str,active@bool}]:(1,Alice,true),(2,Bob,false)
+```asun
+[{id,name,active}]:
+    (1,Alice,true),
+    (2,Bob,false)
 ```
 
 That usually means fewer tokens, smaller payloads, and faster parsing than repeated-object JSON.
