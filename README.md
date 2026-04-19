@@ -7,24 +7,34 @@ High-performance C11 support for [ASUN](https://github.com/asunLab/asun), a sche
 
 [中文文档](https://github.com/asunLab/asun-c/blob/main/README_CN.md)
 
-## Why ASUN
+## Why ASUN?
 
-ASUN keeps the schema once and stores each row as a compact tuple:
+**json**
+
+Standard JSON repeats every field name in every record. When you send structured data to an LLM, over an API, or across services, that repetition wastes tokens, bytes, and attention:
 
 ```json
 [
   { "id": 1, "name": "Alice", "active": true },
-  { "id": 2, "name": "Bob", "active": false }
+  { "id": 2, "name": "Bob", "active": false },
+  { "id": 3, "name": "Carol", "active": true }
 ]
 ```
 
+**asun**
+
+ASUN declares the schema **once** and streams data as compact tuples:
+
 ```asun
-[{id,name,active}]:
-    (1,Alice,true),
-    (2,Bob,false)
+[{id, name, active}]:
+  (1,Alice,true),
+  (2,Bob,false),
+  (3,Carol,true)
 ```
 
-That usually means fewer tokens, smaller payloads, and faster parsing than repeated-object JSON.
+**Fewer tokens. Smaller payloads. Clearer structure, and faster parsing than repeated-object JSON.**
+
+---
 
 ## Highlights
 

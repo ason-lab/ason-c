@@ -9,22 +9,32 @@
 
 ## 为什么用 ASUN
 
-ASUN 只写一次 Schema，后续每一行只保留值：
+**json**
+
+标准 JSON 会在每条记录里重复所有字段名。无论是发给 LLM、通过 API 传输，还是服务之间交换数据，这种重复都会浪费 Token、带宽和阅读成本：
 
 ```json
 [
   { "id": 1, "name": "Alice", "active": true },
-  { "id": 2, "name": "Bob", "active": false }
+  { "id": 2, "name": "Bob", "active": false },
+  { "id": 3, "name": "Carol", "active": true }
 ]
 ```
 
+**asun**
+
+ASUN 只声明 **一次** Schema，后续每一行只保留值：
+
 ```asun
-[{id,name,active}]:
-    (1,Alice,true),
-    (2,Bob,false)
+[{id, name, active}]:
+  (1,Alice,true),
+  (2,Bob,false),
+  (3,Carol,true)
 ```
 
-这通常意味着更少的 token、更小的体积，以及比重复键名 JSON 更快的解析。
+**这通常意味着更少的 token、更小的体积，更清晰的结构, 以及比重复键名 JSON 更快的解析。**
+
+---
 
 ## 特性
 
@@ -148,7 +158,6 @@ ctest --test-dir build
 
 - `@int`、`@str` 这类终端标注是可省略的基本类型提示。
 - 对复杂字段，结构标记不是可选的：嵌套对象和数组必须保留 `@{...}` 或 `@[...]`。
-- 当前 C 实现已经和最新规范对齐，不再支持旧的专用 map API。
 
 ## Contributors
 
