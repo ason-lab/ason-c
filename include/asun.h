@@ -294,8 +294,12 @@ asun_inline const char* asun_find_quote_or_special(const char* pos, const char* 
 /* Check if string needs quoting (contains structural chars) */
 asun_inline bool asun_needs_quoting(const char* s, size_t len) {
     if (len == 0) return true;
-    /* Leading/trailing whitespace */
-    if (s[0] == ' ' || s[0] == '\t' || s[len-1] == ' ' || s[len-1] == '\t') return true;
+    /* Leading/trailing whitespace (any of space/tab/LF/CR forces quoting) */
+    {
+        char f = s[0], e = s[len-1];
+        if (f == ' ' || f == '\t' || f == '\n' || f == '\r') return true;
+        if (e == ' ' || e == '\t' || e == '\n' || e == '\r') return true;
+    }
     /* Bool/number-like */
     if (len == 4 &&
         ((s[0] == 't' && s[1] == 'r' && s[2] == 'u' && s[3] == 'e') ||
@@ -303,6 +307,12 @@ asun_inline bool asun_needs_quoting(const char* s, size_t len) {
     if (len == 5 &&
         s[0] == 'f' && s[1] == 'a' && s[2] == 'l' && s[3] == 's' && s[4] == 'e') return true;
     if ((s[0] >= '0' && s[0] <= '9') || s[0] == '-' || s[0] == '+') return true;
+    /* `.<digit>` — leading dot followed by a digit is also a number-lookalike. */
+    if (len > 1 && s[0] == '.' && s[1] >= '0' && s[1] <= '9') return true;
+    /* Block-comment lookalike: any `/` followed by `*` forces quoting. */
+    for (size_t i = 0; i + 1 < len; i++) {
+        if (s[i] == '/' && s[i + 1] == '*') return true;
+    }
 
 #if defined(ASUN_NEON)
     /* SIMD: check for structural chars: ,@()[]{}:"\\<ctrl> */
