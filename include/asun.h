@@ -1315,13 +1315,34 @@ asun_buf_t asun_pretty_format(const char* src, size_t len);
 
 /* ============================================================================
  * Binary serialization / deserialization (ASUN-BIN)
- * Little-endian fixed-width encoding, zero-copy string_view for reads.
+ * LEB128 varint integers (zigzag for signed); floats fixed-width LE.
+ * Zero-copy string_view for reads.
  * ============================================================================
  */
+
+/* zigzag: map signed <-> unsigned so small magnitudes stay small */
+asun_inline uint64_t asun_bin_zigzag_encode(int64_t v) {
+    return (uint64_t)((v << 1) ^ (v >> 63));
+}
+asun_inline int64_t asun_bin_zigzag_decode(uint64_t v) {
+    return (int64_t)(v >> 1) ^ -(int64_t)(v & 1);
+}
 
 /* Binary write helpers — append into asun_buf_t */
 asun_inline void asun_bin_write_u8(asun_buf_t* buf, uint8_t v) {
     asun_buf_push(buf, (char)v);
+}
+/* LEB128 unsigned varint */
+asun_inline void asun_bin_write_uvarint(asun_buf_t* buf, uint64_t v) {
+    while (v >= 0x80) {
+        asun_buf_push(buf, (char)((uint8_t)v | 0x80));
+        v >>= 7;
+    }
+    asun_buf_push(buf, (char)(uint8_t)v);
+}
+/* zigzag + LEB128 signed varint */
+asun_inline void asun_bin_write_ivarint(asun_buf_t* buf, int64_t v) {
+    asun_bin_write_uvarint(buf, asun_bin_zigzag_encode(v));
 }
 asun_inline void asun_bin_write_u16(asun_buf_t* buf, uint16_t v) {
     uint8_t tmp[2]; memcpy(tmp, &v, 2); asun_buf_append(buf, (char*)tmp, 2);
@@ -1339,14 +1360,14 @@ asun_inline void asun_bin_write_f64(asun_buf_t* buf, double v) {
     uint64_t u; memcpy(&u, &v, 8); asun_bin_write_u64(buf, u);
 }
 asun_inline void asun_bin_write_str(asun_buf_t* buf, const char* s, size_t len) {
-    asun_bin_write_u32(buf, (uint32_t)len);
+    asun_bin_write_uvarint(buf, (uint64_t)len);
     asun_buf_append(buf, s, len);
 }
 asun_inline void asun_bin_write_asun_string(asun_buf_t* buf, const asun_string_t* s) {
     if (s && s->data) {
         asun_bin_write_str(buf, s->data, s->len);
     } else {
-        asun_bin_write_u32(buf, 0);
+        asun_bin_write_uvarint(buf, 0);
     }
 }
 
@@ -1385,15 +1406,35 @@ asun_inline asun_err_t asun_bin_read_f64(const char** pos, const char* end, doub
     memcpy(out, &u, 8);
     return ASUN_OK;
 }
+/* LEB128 unsigned varint. Rejects overlong (> 64-bit) encodings. */
+asun_inline asun_err_t asun_bin_read_uvarint(const char** pos, const char* end, uint64_t* out) {
+    uint64_t result = 0;
+    unsigned shift = 0;
+    for (;;) {
+        if (*pos + 1 > end) return ASUN_ERR_BUFFER_OVERFLOW;
+        uint8_t byte = (uint8_t)**pos; (*pos)++;
+        if (shift >= 64) return ASUN_ERR_INVALID_NUMBER;
+        result |= (uint64_t)(byte & 0x7f) << shift;
+        if ((byte & 0x80) == 0) { *out = result; return ASUN_OK; }
+        shift += 7;
+    }
+}
+/* zigzag + LEB128 signed varint */
+asun_inline asun_err_t asun_bin_read_ivarint(const char** pos, const char* end, int64_t* out) {
+    uint64_t u; asun_err_t e = asun_bin_read_uvarint(pos, end, &u);
+    if (e != ASUN_OK) return e;
+    *out = asun_bin_zigzag_decode(u);
+    return ASUN_OK;
+}
 /* Zero-copy: points directly into the source buffer — caller must keep source alive */
 asun_inline asun_err_t asun_bin_read_str_view(const char** pos, const char* end,
                                                const char** out_data, size_t* out_len) {
-    uint32_t len;
-    if (*pos + 4 > end) return ASUN_ERR_BUFFER_OVERFLOW;
-    memcpy(&len, *pos, 4); (*pos) += 4;
+    uint64_t len;
+    asun_err_t e = asun_bin_read_uvarint(pos, end, &len);
+    if (e != ASUN_OK) return e;
     if (*pos + len > end) return ASUN_ERR_BUFFER_OVERFLOW;
     *out_data = *pos;
-    *out_len = len;
+    *out_len = (size_t)len;
     (*pos) += len;
     return ASUN_OK;
 }
@@ -1477,8 +1518,7 @@ asun_err_t asun_bin_decode_struct(const char** pos, const char* end, void* obj, 
     } \
     static inline asun_buf_t asun_encode_bin_vec_##StructType(const StructType* arr, size_t count) { \
         asun_buf_t buf = asun_buf_new(count * nfields * 16 + 8); \
-        uint32_t n = (uint32_t)count; \
-        asun_bin_write_u32(&buf, n); \
+        asun_bin_write_uvarint(&buf, (uint64_t)count); \
         for (size_t i = 0; i < count; i++) { \
             asun_bin_encode_struct(&buf, &arr[i], &StructType##_asun_desc); \
         } \
@@ -1493,12 +1533,12 @@ asun_err_t asun_bin_decode_struct(const char** pos, const char* end, void* obj, 
                                                               StructType** out_arr, size_t* out_count) { \
         const char* pos = data; \
         const char* end = data + len; \
-        uint32_t count; \
-        asun_err_t err = asun_bin_read_u32(&pos, end, &count); \
+        uint64_t count; \
+        asun_err_t err = asun_bin_read_uvarint(&pos, end, &count); \
         if (err != ASUN_OK) return err; \
-        StructType* arr = (StructType*)calloc(count, sizeof(StructType)); \
+        StructType* arr = (StructType*)calloc((size_t)count, sizeof(StructType)); \
         if (!arr) return ASUN_ERR_ALLOC; \
-        for (uint32_t i = 0; i < count; i++) { \
+        for (uint64_t i = 0; i < count; i++) { \
             err = asun_bin_decode_struct(&pos, end, &arr[i], &StructType##_asun_desc); \
             if (err != ASUN_OK) { free(arr); return err; } \
         } \

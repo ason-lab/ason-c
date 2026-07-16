@@ -944,9 +944,10 @@ asun_err_t asun_decode_struct(const char** pos, const char* end, void* obj, cons
 
 /* ===========================================================================
  * ASUN Binary Format Implementation
- * Wire format: little-endian fixed-width, no field names, positional.
- * Strings: u32 length prefix + bytes (no null terminator).
- * Arrays: u32 count prefix + elements.
+ * Wire format: LEB128 varint integers (zigzag for signed), no field names,
+ * positional. Floats stay fixed-width LE (IEEE-754 bits don't compress).
+ * Strings: uvarint length prefix + bytes (no null terminator).
+ * Arrays: uvarint count prefix + elements.
  * Boolean: 1 byte (0 or 1).
  * =========================================================================== */
 
@@ -961,15 +962,15 @@ void asun_bin_encode_i8(asun_buf_t* buf, const void* base, size_t off) {
 }
 void asun_bin_encode_i16(asun_buf_t* buf, const void* base, size_t off) {
     int16_t v; memcpy(&v, (const char*)base + off, 2);
-    asun_bin_write_u16(buf, (uint16_t)v);
+    asun_bin_write_ivarint(buf, (int64_t)v);
 }
 void asun_bin_encode_i32(asun_buf_t* buf, const void* base, size_t off) {
     int32_t v; memcpy(&v, (const char*)base + off, 4);
-    asun_bin_write_u32(buf, (uint32_t)v);
+    asun_bin_write_ivarint(buf, (int64_t)v);
 }
 void asun_bin_encode_i64(asun_buf_t* buf, const void* base, size_t off) {
     int64_t v; memcpy(&v, (const char*)base + off, 8);
-    asun_bin_write_u64(buf, (uint64_t)v);
+    asun_bin_write_ivarint(buf, v);
 }
 void asun_bin_encode_u8(asun_buf_t* buf, const void* base, size_t off) {
     uint8_t v; memcpy(&v, (const char*)base + off, 1);
@@ -977,15 +978,15 @@ void asun_bin_encode_u8(asun_buf_t* buf, const void* base, size_t off) {
 }
 void asun_bin_encode_u16(asun_buf_t* buf, const void* base, size_t off) {
     uint16_t v; memcpy(&v, (const char*)base + off, 2);
-    asun_bin_write_u16(buf, v);
+    asun_bin_write_uvarint(buf, (uint64_t)v);
 }
 void asun_bin_encode_u32(asun_buf_t* buf, const void* base, size_t off) {
     uint32_t v; memcpy(&v, (const char*)base + off, 4);
-    asun_bin_write_u32(buf, v);
+    asun_bin_write_uvarint(buf, (uint64_t)v);
 }
 void asun_bin_encode_u64(asun_buf_t* buf, const void* base, size_t off) {
     uint64_t v; memcpy(&v, (const char*)base + off, 8);
-    asun_bin_write_u64(buf, v);
+    asun_bin_write_uvarint(buf, v);
 }
 void asun_bin_encode_f32(asun_buf_t* buf, const void* base, size_t off) {
     float v; memcpy(&v, (const char*)base + off, 4);
@@ -1003,27 +1004,27 @@ void asun_bin_encode_str(asun_buf_t* buf, const void* base, size_t off) {
 /* ---- vector dump ---- */
 void asun_bin_encode_vec_i64(asun_buf_t* buf, const void* base, size_t off) {
     asun_vec_i64 v; memcpy(&v, (const char*)base + off, sizeof(v));
-    asun_bin_write_u32(buf, (uint32_t)v.len);
-    if (v.len) asun_buf_append(buf, (const char*)v.data, v.len * sizeof(int64_t));
+    asun_bin_write_uvarint(buf, (uint64_t)v.len);
+    for (size_t i = 0; i < v.len; i++) asun_bin_write_ivarint(buf, v.data[i]);
 }
 void asun_bin_encode_vec_u64(asun_buf_t* buf, const void* base, size_t off) {
     asun_vec_u64 v; memcpy(&v, (const char*)base + off, sizeof(v));
-    asun_bin_write_u32(buf, (uint32_t)v.len);
-    if (v.len) asun_buf_append(buf, (const char*)v.data, v.len * sizeof(uint64_t));
+    asun_bin_write_uvarint(buf, (uint64_t)v.len);
+    for (size_t i = 0; i < v.len; i++) asun_bin_write_uvarint(buf, v.data[i]);
 }
 void asun_bin_encode_vec_f64(asun_buf_t* buf, const void* base, size_t off) {
     asun_vec_f64 v; memcpy(&v, (const char*)base + off, sizeof(v));
-    asun_bin_write_u32(buf, (uint32_t)v.len);
+    asun_bin_write_uvarint(buf, (uint64_t)v.len);
     if (v.len) asun_buf_append(buf, (const char*)v.data, v.len * sizeof(double));
 }
 void asun_bin_encode_vec_str(asun_buf_t* buf, const void* base, size_t off) {
     asun_vec_str v; memcpy(&v, (const char*)base + off, sizeof(v));
-    asun_bin_write_u32(buf, (uint32_t)v.len);
+    asun_bin_write_uvarint(buf, (uint64_t)v.len);
     for (size_t i = 0; i < v.len; i++) asun_bin_write_asun_string(buf, &v.data[i]);
 }
 void asun_bin_encode_vec_bool(asun_buf_t* buf, const void* base, size_t off) {
     asun_vec_bool v; memcpy(&v, (const char*)base + off, sizeof(v));
-    asun_bin_write_u32(buf, (uint32_t)v.len);
+    asun_bin_write_uvarint(buf, (uint64_t)v.len);
     for (size_t i = 0; i < v.len; i++) asun_bin_write_u8(buf, v.data[i] ? 1 : 0);
 }
 
@@ -1038,15 +1039,15 @@ asun_err_t asun_bin_decode_i8(const char** pos, const char* end, void* base, siz
     if (e) return e; memcpy((char*)base + off, &v, 1); return ASUN_OK;
 }
 asun_err_t asun_bin_decode_i16(const char** pos, const char* end, void* base, size_t off) {
-    uint16_t v; asun_err_t e = asun_bin_read_u16(pos, end, &v);
-    if (e) return e; memcpy((char*)base + off, &v, 2); return ASUN_OK;
+    int64_t v; asun_err_t e = asun_bin_read_ivarint(pos, end, &v);
+    if (e) return e; int16_t w = (int16_t)v; memcpy((char*)base + off, &w, 2); return ASUN_OK;
 }
 asun_err_t asun_bin_decode_i32(const char** pos, const char* end, void* base, size_t off) {
-    uint32_t v; asun_err_t e = asun_bin_read_u32(pos, end, &v);
-    if (e) return e; memcpy((char*)base + off, &v, 4); return ASUN_OK;
+    int64_t v; asun_err_t e = asun_bin_read_ivarint(pos, end, &v);
+    if (e) return e; int32_t w = (int32_t)v; memcpy((char*)base + off, &w, 4); return ASUN_OK;
 }
 asun_err_t asun_bin_decode_i64(const char** pos, const char* end, void* base, size_t off) {
-    uint64_t v; asun_err_t e = asun_bin_read_u64(pos, end, &v);
+    int64_t v; asun_err_t e = asun_bin_read_ivarint(pos, end, &v);
     if (e) return e; memcpy((char*)base + off, &v, 8); return ASUN_OK;
 }
 asun_err_t asun_bin_decode_u8(const char** pos, const char* end, void* base, size_t off) {
@@ -1054,15 +1055,15 @@ asun_err_t asun_bin_decode_u8(const char** pos, const char* end, void* base, siz
     if (e) return e; memcpy((char*)base + off, &v, 1); return ASUN_OK;
 }
 asun_err_t asun_bin_decode_u16(const char** pos, const char* end, void* base, size_t off) {
-    uint16_t v; asun_err_t e = asun_bin_read_u16(pos, end, &v);
-    if (e) return e; memcpy((char*)base + off, &v, 2); return ASUN_OK;
+    uint64_t v; asun_err_t e = asun_bin_read_uvarint(pos, end, &v);
+    if (e) return e; uint16_t w = (uint16_t)v; memcpy((char*)base + off, &w, 2); return ASUN_OK;
 }
 asun_err_t asun_bin_decode_u32(const char** pos, const char* end, void* base, size_t off) {
-    uint32_t v; asun_err_t e = asun_bin_read_u32(pos, end, &v);
-    if (e) return e; memcpy((char*)base + off, &v, 4); return ASUN_OK;
+    uint64_t v; asun_err_t e = asun_bin_read_uvarint(pos, end, &v);
+    if (e) return e; uint32_t w = (uint32_t)v; memcpy((char*)base + off, &w, 4); return ASUN_OK;
 }
 asun_err_t asun_bin_decode_u64(const char** pos, const char* end, void* base, size_t off) {
-    uint64_t v; asun_err_t e = asun_bin_read_u64(pos, end, &v);
+    uint64_t v; asun_err_t e = asun_bin_read_uvarint(pos, end, &v);
     if (e) return e; memcpy((char*)base + off, &v, 8); return ASUN_OK;
 }
 asun_err_t asun_bin_decode_f32(const char** pos, const char* end, void* base, size_t off) {
@@ -1074,8 +1075,8 @@ asun_err_t asun_bin_decode_f64(const char** pos, const char* end, void* base, si
     if (e) return e; memcpy((char*)base + off, &v, 8); return ASUN_OK;
 }
 asun_err_t asun_bin_decode_str(const char** pos, const char* end, void* base, size_t off) {
-    uint32_t len;
-    asun_err_t e = asun_bin_read_u32(pos, end, &len);
+    uint64_t len;
+    asun_err_t e = asun_bin_read_uvarint(pos, end, &len);
     if (e) return e;
     if ((size_t)(end - *pos) < len) return ASUN_ERR_BUFFER_OVERFLOW;
     char* buf = (char*)malloc(len + 1);
@@ -1090,56 +1091,60 @@ asun_err_t asun_bin_decode_str(const char** pos, const char* end, void* base, si
 
 /* ---- vector load ---- */
 asun_err_t asun_bin_decode_vec_i64(const char** pos, const char* end, void* base, size_t off) {
-    uint32_t n; asun_err_t e = asun_bin_read_u32(pos, end, &n); if (e) return e;
-    if ((size_t)(end - *pos) < (size_t)n * 8) return ASUN_ERR_BUFFER_OVERFLOW;
+    uint64_t n; asun_err_t e = asun_bin_read_uvarint(pos, end, &n); if (e) return e;
     int64_t* arr = (int64_t*)malloc((size_t)n * sizeof(int64_t));
     if (!arr && n) return ASUN_ERR_ALLOC;
-    memcpy(arr, *pos, (size_t)n * 8); *pos += (size_t)n * 8;
-    asun_vec_i64 v = {arr, n, n}; memcpy((char*)base + off, &v, sizeof(v)); return ASUN_OK;
+    for (uint64_t i = 0; i < n; i++) {
+        int64_t x; e = asun_bin_read_ivarint(pos, end, &x); if (e) { free(arr); return e; }
+        arr[i] = x;
+    }
+    asun_vec_i64 v = {arr, (size_t)n, (size_t)n}; memcpy((char*)base + off, &v, sizeof(v)); return ASUN_OK;
 }
 asun_err_t asun_bin_decode_vec_u64(const char** pos, const char* end, void* base, size_t off) {
-    uint32_t n; asun_err_t e = asun_bin_read_u32(pos, end, &n); if (e) return e;
-    if ((size_t)(end - *pos) < (size_t)n * 8) return ASUN_ERR_BUFFER_OVERFLOW;
+    uint64_t n; asun_err_t e = asun_bin_read_uvarint(pos, end, &n); if (e) return e;
     uint64_t* arr = (uint64_t*)malloc((size_t)n * sizeof(uint64_t));
     if (!arr && n) return ASUN_ERR_ALLOC;
-    memcpy(arr, *pos, (size_t)n * 8); *pos += (size_t)n * 8;
-    asun_vec_u64 v = {arr, n, n}; memcpy((char*)base + off, &v, sizeof(v)); return ASUN_OK;
+    for (uint64_t i = 0; i < n; i++) {
+        uint64_t x; e = asun_bin_read_uvarint(pos, end, &x); if (e) { free(arr); return e; }
+        arr[i] = x;
+    }
+    asun_vec_u64 v = {arr, (size_t)n, (size_t)n}; memcpy((char*)base + off, &v, sizeof(v)); return ASUN_OK;
 }
 asun_err_t asun_bin_decode_vec_f64(const char** pos, const char* end, void* base, size_t off) {
-    uint32_t n; asun_err_t e = asun_bin_read_u32(pos, end, &n); if (e) return e;
+    uint64_t n; asun_err_t e = asun_bin_read_uvarint(pos, end, &n); if (e) return e;
     if ((size_t)(end - *pos) < (size_t)n * 8) return ASUN_ERR_BUFFER_OVERFLOW;
     double* arr = (double*)malloc((size_t)n * sizeof(double));
     if (!arr && n) return ASUN_ERR_ALLOC;
     memcpy(arr, *pos, (size_t)n * 8); *pos += (size_t)n * 8;
-    asun_vec_f64 v = {arr, n, n}; memcpy((char*)base + off, &v, sizeof(v)); return ASUN_OK;
+    asun_vec_f64 v = {arr, (size_t)n, (size_t)n}; memcpy((char*)base + off, &v, sizeof(v)); return ASUN_OK;
 }
 asun_err_t asun_bin_decode_vec_str(const char** pos, const char* end, void* base, size_t off) {
-    uint32_t n; asun_err_t e = asun_bin_read_u32(pos, end, &n); if (e) return e;
+    uint64_t n; asun_err_t e = asun_bin_read_uvarint(pos, end, &n); if (e) return e;
     asun_string_t* arr = (asun_string_t*)malloc((size_t)n * sizeof(asun_string_t));
     if (!arr && n) return ASUN_ERR_ALLOC;
-    for (uint32_t i = 0; i < n; i++) {
-        uint32_t slen;
-        e = asun_bin_read_u32(pos, end, &slen); if (e) { free(arr); return e; }
+    for (uint64_t i = 0; i < n; i++) {
+        uint64_t slen;
+        e = asun_bin_read_uvarint(pos, end, &slen); if (e) { free(arr); return e; }
         if ((size_t)(end - *pos) < slen) { free(arr); return ASUN_ERR_BUFFER_OVERFLOW; }
-        char* sbuf = (char*)malloc(slen + 1);
+        char* sbuf = (char*)malloc((size_t)slen + 1);
         if (!sbuf && slen) { free(arr); return ASUN_ERR_ALLOC; }
         if (slen) memcpy(sbuf, *pos, slen);
         if (sbuf) sbuf[slen] = '\0';
         *pos += slen;
         arr[i].data = sbuf ? sbuf : (char*)"";
-        arr[i].len  = slen;
+        arr[i].len  = (size_t)slen;
     }
-    asun_vec_str v = {arr, n, n}; memcpy((char*)base + off, &v, sizeof(v)); return ASUN_OK;
+    asun_vec_str v = {arr, (size_t)n, (size_t)n}; memcpy((char*)base + off, &v, sizeof(v)); return ASUN_OK;
 }
 asun_err_t asun_bin_decode_vec_bool(const char** pos, const char* end, void* base, size_t off) {
-    uint32_t n; asun_err_t e = asun_bin_read_u32(pos, end, &n); if (e) return e;
+    uint64_t n; asun_err_t e = asun_bin_read_uvarint(pos, end, &n); if (e) return e;
     bool* arr = (bool*)malloc((size_t)n * sizeof(bool));
     if (!arr && n) return ASUN_ERR_ALLOC;
-    for (uint32_t i = 0; i < n; i++) {
+    for (uint64_t i = 0; i < n; i++) {
         uint8_t b; e = asun_bin_read_u8(pos, end, &b); if (e) { free(arr); return e; }
         arr[i] = b != 0;
     }
-    asun_vec_bool v = {arr, n, n}; memcpy((char*)base + off, &v, sizeof(v)); return ASUN_OK;
+    asun_vec_bool v = {arr, (size_t)n, (size_t)n}; memcpy((char*)base + off, &v, sizeof(v)); return ASUN_OK;
 }
 
 /* ---- type dispatch ---- */
