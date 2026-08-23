@@ -194,37 +194,46 @@ static asun_err_t load_u64_raw(const char** pos, const char* end, uint64_t* out)
 static asun_err_t load_f64_raw(const char** pos, const char* end, double* out) {
     asun_skip_ws(pos, end);
     if (*pos >= end) return ASUN_ERR_INVALID_NUMBER;
-    const char* p = *pos;
+    const char* start = *pos;
+    const char* p = start;
     bool neg = false;
     if (*p == '-') { neg = true; p++; }
-    if (p >= end || (*p < '0' && *p != '.')) return ASUN_ERR_INVALID_NUMBER;
-    /* Fast path: hand-rolled integer + fractional parsing */
-    uint64_t intpart = 0;
+    (void)neg;
+    if (p >= end || ((*p < '0' || *p > '9') && *p != '.')) return ASUN_ERR_INVALID_NUMBER;
+    /* Scan the numeric token: digits [. digits] [ (e|E) [sign] digits ] */
     int digits = 0;
-    while (p < end && *p >= '0' && *p <= '9') {
-        intpart = intpart * 10 + (*p - '0');
-        p++; digits++;
-    }
+    while (p < end && *p >= '0' && *p <= '9') { p++; digits++; }
     if (p < end && *p == '.') {
         p++;
-        double frac = 0.0, scale = 0.1;
-        while (p < end && *p >= '0' && *p <= '9') {
-            frac += (*p - '0') * scale;
-            scale *= 0.1;
-            p++; digits++;
-        }
-        *out = neg ? -(intpart + frac) : (intpart + frac);
-    } else {
-        *out = neg ? -(double)intpart : (double)intpart;
+        while (p < end && *p >= '0' && *p <= '9') { p++; digits++; }
     }
     if (digits == 0) return ASUN_ERR_INVALID_NUMBER;
-    /* Handle exponent if present */
     if (p < end && (*p == 'e' || *p == 'E')) {
-        char* endptr = NULL;
-        *out = strtod(*pos, &endptr);
-        if (endptr == *pos) return ASUN_ERR_INVALID_NUMBER;
-        p = endptr;
+        const char* e = p + 1;
+        if (e < end && (*e == '+' || *e == '-')) e++;
+        int exp_digits = 0;
+        while (e < end && *e >= '0' && *e <= '9') { e++; exp_digits++; }
+        if (exp_digits == 0) return ASUN_ERR_INVALID_NUMBER; /* dangling exponent */
+        p = e;
     }
+    /* Convert the exact [start, p) token with strtod over a bounded, NUL-terminated
+     * copy. This gives correct round-tripping (unlike hand-rolled accumulation) and
+     * never reads past `end` (input is not guaranteed NUL-terminated). */
+    size_t tok_len = (size_t)(p - start);
+    char stackbuf[64];
+    char* tmp = stackbuf;
+    if (tok_len + 1 > sizeof(stackbuf)) {
+        tmp = (char*)malloc(tok_len + 1);
+        if (!tmp) return ASUN_ERR_ALLOC;
+    }
+    memcpy(tmp, start, tok_len);
+    tmp[tok_len] = '\0';
+    char* endptr = NULL;
+    double v = strtod(tmp, &endptr);
+    asun_err_t err = (endptr == tmp) ? ASUN_ERR_INVALID_NUMBER : ASUN_OK;
+    if (tmp != stackbuf) free(tmp);
+    if (err != ASUN_OK) return err;
+    *out = v;
     *pos = p;
     return ASUN_OK;
 }
@@ -243,20 +252,26 @@ asun_err_t asun_decode_bool(const char** pos, const char* end, void* base, size_
 
 asun_err_t asun_decode_i8(const char** pos, const char* end, void* base, size_t offset) {
     int64_t v; asun_err_t e = load_i64_raw(pos, end, &v);
-    if (e == ASUN_OK) *(int8_t*)((char*)base + offset) = (int8_t)v;
-    return e;
+    if (e != ASUN_OK) return e;
+    if (v < INT8_MIN || v > INT8_MAX) return ASUN_ERR_OUT_OF_RANGE;
+    *(int8_t*)((char*)base + offset) = (int8_t)v;
+    return ASUN_OK;
 }
 
 asun_err_t asun_decode_i16(const char** pos, const char* end, void* base, size_t offset) {
     int64_t v; asun_err_t e = load_i64_raw(pos, end, &v);
-    if (e == ASUN_OK) *(int16_t*)((char*)base + offset) = (int16_t)v;
-    return e;
+    if (e != ASUN_OK) return e;
+    if (v < INT16_MIN || v > INT16_MAX) return ASUN_ERR_OUT_OF_RANGE;
+    *(int16_t*)((char*)base + offset) = (int16_t)v;
+    return ASUN_OK;
 }
 
 asun_err_t asun_decode_i32(const char** pos, const char* end, void* base, size_t offset) {
     int64_t v; asun_err_t e = load_i64_raw(pos, end, &v);
-    if (e == ASUN_OK) *(int32_t*)((char*)base + offset) = (int32_t)v;
-    return e;
+    if (e != ASUN_OK) return e;
+    if (v < INT32_MIN || v > INT32_MAX) return ASUN_ERR_OUT_OF_RANGE;
+    *(int32_t*)((char*)base + offset) = (int32_t)v;
+    return ASUN_OK;
 }
 
 asun_err_t asun_decode_i64(const char** pos, const char* end, void* base, size_t offset) {
@@ -265,20 +280,26 @@ asun_err_t asun_decode_i64(const char** pos, const char* end, void* base, size_t
 
 asun_err_t asun_decode_u8(const char** pos, const char* end, void* base, size_t offset) {
     uint64_t v; asun_err_t e = load_u64_raw(pos, end, &v);
-    if (e == ASUN_OK) *(uint8_t*)((char*)base + offset) = (uint8_t)v;
-    return e;
+    if (e != ASUN_OK) return e;
+    if (v > UINT8_MAX) return ASUN_ERR_OUT_OF_RANGE;
+    *(uint8_t*)((char*)base + offset) = (uint8_t)v;
+    return ASUN_OK;
 }
 
 asun_err_t asun_decode_u16(const char** pos, const char* end, void* base, size_t offset) {
     uint64_t v; asun_err_t e = load_u64_raw(pos, end, &v);
-    if (e == ASUN_OK) *(uint16_t*)((char*)base + offset) = (uint16_t)v;
-    return e;
+    if (e != ASUN_OK) return e;
+    if (v > UINT16_MAX) return ASUN_ERR_OUT_OF_RANGE;
+    *(uint16_t*)((char*)base + offset) = (uint16_t)v;
+    return ASUN_OK;
 }
 
 asun_err_t asun_decode_u32(const char** pos, const char* end, void* base, size_t offset) {
     uint64_t v; asun_err_t e = load_u64_raw(pos, end, &v);
-    if (e == ASUN_OK) *(uint32_t*)((char*)base + offset) = (uint32_t)v;
-    return e;
+    if (e != ASUN_OK) return e;
+    if (v > UINT32_MAX) return ASUN_ERR_OUT_OF_RANGE;
+    *(uint32_t*)((char*)base + offset) = (uint32_t)v;
+    return ASUN_OK;
 }
 
 asun_err_t asun_decode_u64(const char** pos, const char* end, void* base, size_t offset) {
@@ -287,8 +308,12 @@ asun_err_t asun_decode_u64(const char** pos, const char* end, void* base, size_t
 
 asun_err_t asun_decode_f32(const char** pos, const char* end, void* base, size_t offset) {
     double v; asun_err_t e = load_f64_raw(pos, end, &v);
-    if (e == ASUN_OK) *(float*)((char*)base + offset) = (float)v;
-    return e;
+    if (e != ASUN_OK) return e;
+    /* Reject finite doubles whose magnitude overflows float (would become inf). */
+    double av = v < 0 ? -v : v;
+    if (av > (double)FLT_MAX) return ASUN_ERR_OUT_OF_RANGE;
+    *(float*)((char*)base + offset) = (float)v;
+    return ASUN_OK;
 }
 
 asun_err_t asun_decode_f64(const char** pos, const char* end, void* base, size_t offset) {

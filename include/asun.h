@@ -78,7 +78,13 @@ typedef enum {
     ASUN_ERR_BUFFER_OVERFLOW,
     ASUN_ERR_SCHEMA_MISMATCH,
     ASUN_ERR_MISSING_FIELD,
+    ASUN_ERR_OUT_OF_RANGE,
+    ASUN_ERR_DEPTH_EXCEEDED,
 } asun_err_t;
+
+/* Maximum schema-annotation nesting depth; guards against stack overflow
+ * from untrusted deeply-nested input (@{...@{...}} / @[{...}]). */
+#define ASUN_MAX_DEPTH 128
 
 /* ============================================================================
  * Resizable buffer (serialization output)
@@ -446,7 +452,9 @@ asun_inline void asun_buf_append_f64(asun_buf_t* b, double v) {
     if (v != v) { asun_buf_appends(b, "NaN"); return; }
     if (v == 1.0/0.0) { asun_buf_appends(b, "Inf"); return; }
     if (v == -1.0/0.0) { asun_buf_appends(b, "-Inf"); return; }
-    if (v < 0) { asun_buf_push(b, '-'); v = -v; }
+    /* Emit the sign explicitly so that -0.0 keeps its sign (signbit is true
+     * for -0.0 while `v < 0` is not). */
+    if (signbit(v)) { asun_buf_push(b, '-'); v = -v; }
     double intpart, fracpart;
     fracpart = modf(v, &intpart);
     if (fracpart == 0.0 && intpart < 1e15) {
@@ -454,29 +462,16 @@ asun_inline void asun_buf_append_f64(asun_buf_t* b, double v) {
         asun_buf_appends(b, ".0");
         return;
     }
-    /* Check 1-decimal / 2-decimal fast paths */
-    double f1 = fracpart * 10.0;
-    double r1 = f1 - (int)f1;
-    if (r1 < 1e-9 && intpart < 1e15) {
-        asun_buf_append_u64(b, (uint64_t)intpart);
-        asun_buf_push(b, '.');
-        asun_buf_push(b, '0' + (int)f1);
-        return;
-    }
-    double f2 = fracpart * 100.0;
-    double r2 = f2 - (int)f2;
-    if (r2 < 1e-9 && intpart < 1e15) {
-        asun_buf_append_u64(b, (uint64_t)intpart);
-        asun_buf_push(b, '.');
-        int d = (int)f2;
-        asun_buf_push(b, '0' + d / 10);
-        asun_buf_push(b, '0' + d % 10);
-        return;
-    }
-    /* Fallback */
+    /* Shortest round-trip: pick the smallest precision whose decimal form
+     * parses back to exactly v. (No hand-rolled 1/2-decimal fast paths — they
+     * were not shortest and mishandled edge values.) */
     char tmp[64];
-    int n = snprintf(tmp, sizeof(tmp), "%.17g", (v < 0 ? -v : v));
-    /* Ensure decimal point */
+    int n = 0;
+    for (int prec = 1; prec <= 17; prec++) {
+        n = snprintf(tmp, sizeof(tmp), "%.*g", prec, v);
+        if (strtod(tmp, NULL) == v) break;
+    }
+    /* Ensure a decimal point so the value reads back as a float, not an int. */
     bool has_dot = false;
     for (int i = 0; i < n; i++) { if (tmp[i] == '.' || tmp[i] == 'e' || tmp[i] == 'E') { has_dot = true; break; } }
     asun_buf_append(b, tmp, n);
@@ -754,12 +749,20 @@ static asun_err_t asun_validate_schema_scalar_type(const char** pos, const char*
     return ASUN_ERR_SYNTAX;
 }
 
-static asun_err_t asun_validate_schema_annotation(const char** pos, const char* end) {
+/* Depth-tracked schema parser; `depth` bounds nested @{...}/@[{...}] recursion
+ * to guard against stack overflow from untrusted input. */
+static asun_err_t asun_parse_schema_depth(const char** pos, const char* end,
+                                          asun_schema_field_t* fields, int* count,
+                                          int max_fields, int depth);
+
+static asun_err_t asun_validate_schema_annotation_depth(const char** pos, const char* end,
+                                                        int depth) {
+    if (depth > ASUN_MAX_DEPTH) return ASUN_ERR_DEPTH_EXCEEDED;
     if (*pos >= end) return ASUN_ERR_SYNTAX;
     if (**pos == '{') {
         asun_schema_field_t nested_fields[64];
         int nested_count = 0;
-        asun_err_t err = asun_parse_schema(pos, end, nested_fields, &nested_count, 64);
+        asun_err_t err = asun_parse_schema_depth(pos, end, nested_fields, &nested_count, 64, depth + 1);
         if (err != ASUN_OK) return err;
         asun_free_schema_fields(nested_fields, nested_count);
         return ASUN_OK;
@@ -771,7 +774,7 @@ static asun_err_t asun_validate_schema_annotation(const char** pos, const char* 
         if (*pos < end && **pos == '{') {
             asun_schema_field_t nested_fields[64];
             int nested_count = 0;
-            asun_err_t err = asun_parse_schema(pos, end, nested_fields, &nested_count, 64);
+            asun_err_t err = asun_parse_schema_depth(pos, end, nested_fields, &nested_count, 64, depth + 1);
             if (err != ASUN_OK) return err;
             asun_free_schema_fields(nested_fields, nested_count);
         } else {
@@ -786,8 +789,10 @@ static asun_err_t asun_validate_schema_annotation(const char** pos, const char* 
     return asun_validate_schema_scalar_type(pos, end);
 }
 
-static asun_err_t asun_parse_schema(const char** pos, const char* end,
-                                    asun_schema_field_t* fields, int* count, int max_fields) {
+static asun_err_t asun_parse_schema_depth(const char** pos, const char* end,
+                                          asun_schema_field_t* fields, int* count,
+                                          int max_fields, int depth) {
+    if (depth > ASUN_MAX_DEPTH) return ASUN_ERR_DEPTH_EXCEEDED;
     asun_skip_ws(pos, end);
     if (*pos >= end || **pos != '{') return ASUN_ERR_SYNTAX;
     (*pos)++;
@@ -827,12 +832,18 @@ static asun_err_t asun_parse_schema(const char** pos, const char* end,
         if (*pos < end && **pos == '@') {
             (*pos)++;
             asun_skip_ws(pos, end);
-            asun_err_t err = asun_validate_schema_annotation(pos, end);
+            asun_err_t err = asun_validate_schema_annotation_depth(pos, end, depth + 1);
             if (err != ASUN_OK) return err;
         }
     }
     *count = n;
     return ASUN_OK;
+}
+
+/* Public entry point: parse a top-level schema (depth 0). */
+static asun_err_t asun_parse_schema(const char** pos, const char* end,
+                                    asun_schema_field_t* fields, int* count, int max_fields) {
+    return asun_parse_schema_depth(pos, end, fields, count, max_fields, 0);
 }
 
 static void asun_free_schema_fields(asun_schema_field_t* fields, int count) {
